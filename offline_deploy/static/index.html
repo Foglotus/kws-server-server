@@ -1,0 +1,817 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Recorder - 语音识别测试页面</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        .status-bar {
+            background: white;
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .status-item {
+            display: inline-block;
+            margin-right: 20px;
+        }
+
+        .status-label {
+            font-weight: bold;
+            color: #333;
+        }
+
+        .status-value {
+            color: #666;
+        }
+
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 5px;
+        }
+
+        .status-healthy {
+            background: #10b981;
+        }
+
+        .status-error {
+            background: #ef4444;
+        }
+
+        .card {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .card h2 {
+            color: #333;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #667eea;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        button {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            transition: all 0.3s;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-danger {
+            background: #ef4444;
+            color: white;
+        }
+
+        .btn-success {
+            background: #10b981;
+            color: white;
+        }
+
+        .btn-secondary {
+            background: #6b7280;
+            color: white;
+        }
+
+        .file-input-wrapper {
+            position: relative;
+            display: inline-block;
+        }
+
+        input[type="file"] {
+            position: absolute;
+            opacity: 0;
+            width: 100%;
+            height: 100%;
+            cursor: pointer;
+        }
+
+        .result-box {
+            background: #f3f4f6;
+            border-radius: 8px;
+            padding: 15px;
+            min-height: 100px;
+            max-height: 300px;
+            overflow-y: auto;
+            margin-top: 15px;
+            font-family: 'Courier New', monospace;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        .result-box.empty {
+            color: #9ca3af;
+            font-style: italic;
+        }
+
+        .log-entry {
+            margin-bottom: 8px;
+            padding: 8px;
+            background: white;
+            border-radius: 4px;
+            border-left: 3px solid #667eea;
+        }
+
+        .log-partial {
+            color: #6b7280;
+        }
+
+        .log-result {
+            color: #059669;
+            font-weight: bold;
+        }
+
+        .log-error {
+            color: #dc2626;
+            border-left-color: #dc2626;
+        }
+
+        .info-box {
+            background: #dbeafe;
+            border-left: 4px solid #3b82f6;
+            padding: 12px;
+            border-radius: 4px;
+            margin-top: 15px;
+        }
+
+        .warning-box {
+            background: #fef3c7;
+            border-left: 4px solid #f59e0b;
+            padding: 12px;
+            border-radius: 4px;
+            margin-top: 15px;
+        }
+
+        .recording {
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.7;
+            }
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+            gap: 20px;
+        }
+
+        @media (max-width: 768px) {
+            .grid {
+                grid-template-columns: 1fr;
+            }
+
+            .header h1 {
+                font-size: 1.8em;
+            }
+
+            .button-group {
+                flex-direction: column;
+            }
+
+            button {
+                width: 100%;
+            }
+        }
+
+        .config-section {
+            margin-top: 15px;
+            padding: 15px;
+            background: #f9fafb;
+            border-radius: 8px;
+        }
+
+        .config-item {
+            margin-bottom: 10px;
+        }
+
+        .config-item label {
+            display: inline-block;
+            width: 150px;
+            font-weight: 600;
+            color: #374151;
+        }
+
+        .config-item input {
+            padding: 8px;
+            border: 1px solid #d1d5db;
+            border-radius: 4px;
+            width: 200px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎙️ AI Recorder 测试控制台</h1>
+            <p>语音识别服务测试页面</p>
+        </div>
+
+        <!-- 状态栏 -->
+        <div class="status-bar">
+            <div class="status-item">
+                <span class="status-label">服务状态:</span>
+                <span class="status-indicator" id="serverStatus"></span>
+                <span class="status-value" id="serverStatusText">检查中...</span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">WebSocket:</span>
+                <span class="status-indicator" id="wsStatus"></span>
+                <span class="status-value" id="wsStatusText">未连接</span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">服务器:</span>
+                <span class="status-value" id="serverUrl"></span>
+            </div>
+        </div>
+
+        <!-- 配置区 -->
+        <div class="card">
+            <h2>⚙️ 配置</h2>
+            <div class="config-section">
+                <div class="config-item">
+                    <label for="serverUrlInput">服务器地址:</label>
+                    <input type="text" id="serverUrlInput" value="" />
+                </div>
+                <div class="config-item">
+                    <label for="sampleRateInput">采样率:</label>
+                    <input type="number" id="sampleRateInput" value="16000" />
+                </div>
+                <button class="btn-secondary" onclick="updateConfig()">更新配置</button>
+                <button class="btn-secondary" onclick="checkHealth()">检查健康状态</button>
+            </div>
+        </div>
+
+        <div class="grid">
+            <!-- 实时语音识别 -->
+            <div class="card">
+                <h2>🎤 实时语音识别 (WebSocket)</h2>
+                <div class="button-group">
+                    <button class="btn-primary" id="startStreamBtn" onclick="startRecording()">
+                        开始录音
+                    </button>
+                    <button class="btn-danger" id="stopStreamBtn" onclick="stopRecording()" disabled>
+                        停止录音
+                    </button>
+                    <button class="btn-secondary" onclick="clearStreamResult()">
+                        清空结果
+                    </button>
+                </div>
+
+                <div class="result-box" id="streamingResult">
+                    <div class="empty">点击"开始录音"开始实时识别...</div>
+                </div>
+
+                <div class="info-box">
+                    <strong>说明:</strong> 点击开始录音后，请允许浏览器访问麦克风。说话时会实时显示识别结果。
+                </div>
+            </div>
+
+            <!-- 离线语音识别 -->
+            <div class="card">
+                <h2>📁 离线语音识别</h2>
+                <div class="button-group">
+                    <button class="btn-success" onclick="document.getElementById('audioFile').click()">
+                        选择音频文件
+                    </button>
+                    <input type="file" id="audioFile" accept="audio/*" onchange="handleFileSelect(event)"
+                        style="display: none;">
+                    <button class="btn-primary" id="uploadBtn" onclick="uploadAudioFile()" disabled>
+                        上传并识别
+                    </button>
+                    <button class="btn-secondary" onclick="clearOfflineResult()">
+                        清空结果
+                    </button>
+                </div>
+
+                <div id="fileInfo" style="margin: 10px 0; color: #666;"></div>
+
+                <div class="result-box" id="offlineResult">
+                    <div class="empty">选择音频文件并上传以进行离线识别...</div>
+                </div>
+
+                <div class="info-box">
+                    <strong>支持格式:</strong> WAV, MP3, M4A 等常见音频格式
+                </div>
+            </div>
+
+            <!-- 说话者分离 -->
+            <div class="card">
+                <h2>👥 说话者分离识别</h2>
+                <div class="button-group">
+                    <button class="btn-success" onclick="document.getElementById('diarizationFile').click()">
+                        选择音频文件
+                    </button>
+                    <input type="file" id="diarizationFile" accept="audio/*"
+                        onchange="handleDiarizationFileSelect(event)" style="display: none;">
+                    <button class="btn-primary" id="diarizationBtn" onclick="uploadDiarizationFile()" disabled>
+                        上传并分析
+                    </button>
+                    <button class="btn-secondary" onclick="clearDiarizationResult()">
+                        清空结果
+                    </button>
+                </div>
+
+                <div id="diarizationFileInfo" style="margin: 10px 0; color: #666;"></div>
+
+                <div class="result-box" id="diarizationResult">
+                    <div class="empty">选择音频文件以进行说话者分离识别...</div>
+                </div>
+
+                <div class="warning-box">
+                    <strong>注意:</strong> 说话者分离功能适用于多人对话场景，处理时间可能较长。
+                </div>
+            </div>
+
+            <!-- API 测试 -->
+            <div class="card">
+                <h2>🔧 API 测试</h2>
+                <div class="button-group">
+                    <button class="btn-secondary" onclick="testHealthAPI()">
+                        测试健康检查
+                    </button>
+                    <button class="btn-secondary" onclick="testInfoAPI()">
+                        获取服务信息
+                    </button>
+                    <button class="btn-secondary" onclick="testStatsAPI()">
+                        获取统计信息
+                    </button>
+                </div>
+
+                <div class="result-box" id="apiResult">
+                    <div class="empty">点击按钮测试 API 端点...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 全局变量 - 动态获取当前服务地址
+        const protocol = window.location.protocol;
+        const host = window.location.host;
+        const wsProtocol = protocol === 'https:' ? 'wss:' : 'ws:';
+        let serverUrl = `${protocol}//${host}/realkws`;
+        let wsUrl = `${wsProtocol}//${host}/realkws`;
+        let sampleRate = 16000;
+        let mediaRecorder = null;
+        let audioChunks = [];
+        let websocket = null;
+        let audioContext = null;
+        let selectedFile = null;
+        let selectedDiarizationFile = null;
+
+        // 初始化
+        window.onload = function () {
+            document.getElementById('serverUrlInput').value = serverUrl;
+            checkHealth();
+            updateServerUrlDisplay();
+        };
+
+        // 更新配置
+        function updateConfig() {
+            const urlInput = document.getElementById('serverUrlInput').value.trim();
+            const rateInput = document.getElementById('sampleRateInput').value;
+
+            serverUrl = urlInput.replace(/\/$/, ''); // 移除末尾斜杠
+            wsUrl = serverUrl.replace('http', 'ws');
+            sampleRate = parseInt(rateInput);
+
+            updateServerUrlDisplay();
+            checkHealth();
+
+            alert('配置已更新！');
+        }
+
+        function updateServerUrlDisplay() {
+            document.getElementById('serverUrl').textContent = serverUrl;
+        }
+
+        // 检查服务健康状态
+        async function checkHealth() {
+            try {
+                const response = await fetch(`${serverUrl}/health`);
+                const data = await response.json();
+
+                const statusIndicator = document.getElementById('serverStatus');
+                const statusText = document.getElementById('serverStatusText');
+
+                if (response.ok && data.status === 'healthy') {
+                    statusIndicator.className = 'status-indicator status-healthy';
+                    statusText.textContent = '正常';
+                } else {
+                    statusIndicator.className = 'status-indicator status-error';
+                    statusText.textContent = '异常';
+                }
+            } catch (error) {
+                const statusIndicator = document.getElementById('serverStatus');
+                const statusText = document.getElementById('serverStatusText');
+                statusIndicator.className = 'status-indicator status-error';
+                statusText.textContent = '无法连接';
+                console.error('Health check failed:', error);
+            }
+        }
+
+        // 实时语音识别
+        async function startRecording() {
+            try {
+                // 连接 WebSocket
+                websocket = new WebSocket(`${wsUrl}/api/v1/streaming/asr`);
+
+                websocket.onopen = () => {
+                    updateWSStatus('已连接', true);
+                    appendStreamResult('WebSocket 连接成功', 'info');
+                };
+
+                websocket.onmessage = (event) => {
+                    const data = JSON.parse(event.data);
+                    handleWebSocketMessage(data);
+                };
+
+                websocket.onerror = (error) => {
+                    updateWSStatus('错误', false);
+                    appendStreamResult('WebSocket 错误: ' + error, 'error');
+                };
+
+                websocket.onclose = () => {
+                    updateWSStatus('已断开', false);
+                    appendStreamResult('WebSocket 连接已关闭', 'info');
+                };
+
+                // 获取麦克风权限并开始录音
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        sampleRate: sampleRate,
+                        channelCount: 1,
+                        echoCancellation: true,
+                        noiseSuppression: true
+                    }
+                });
+
+                audioContext = new (window.AudioContext || window.webkitAudioContext)({
+                    sampleRate: sampleRate
+                });
+
+                const source = audioContext.createMediaStreamSource(stream);
+                const processor = audioContext.createScriptProcessor(4096, 1, 1);
+
+                processor.onaudioprocess = (e) => {
+                    if (websocket && websocket.readyState === WebSocket.OPEN) {
+                        const audioData = e.inputBuffer.getChannelData(0);
+                        const pcmData = convertFloat32ToInt16(audioData);
+                        const base64Audio = btoa(String.fromCharCode.apply(null, new Uint8Array(pcmData.buffer)));
+
+                        websocket.send(JSON.stringify({
+                            type: 'audio',
+                            audio: base64Audio,
+                            sample_rate: sampleRate
+                        }));
+                    }
+                };
+
+                source.connect(processor);
+                processor.connect(audioContext.destination);
+
+                mediaRecorder = { stream, processor, source };
+
+                document.getElementById('startStreamBtn').disabled = true;
+                document.getElementById('stopStreamBtn').disabled = false;
+                document.getElementById('startStreamBtn').classList.add('recording');
+
+                appendStreamResult('开始录音...', 'info');
+            } catch (error) {
+                appendStreamResult('无法访问麦克风: ' + error.message, 'error');
+                console.error('Recording error:', error);
+            }
+        }
+
+        function stopRecording() {
+            if (mediaRecorder) {
+                mediaRecorder.stream.getTracks().forEach(track => track.stop());
+                mediaRecorder.processor.disconnect();
+                mediaRecorder.source.disconnect();
+                mediaRecorder = null;
+            }
+
+            if (audioContext) {
+                audioContext.close();
+                audioContext = null;
+            }
+
+            if (websocket) {
+                websocket.close();
+                websocket = null;
+            }
+
+            document.getElementById('startStreamBtn').disabled = false;
+            document.getElementById('stopStreamBtn').disabled = true;
+            document.getElementById('startStreamBtn').classList.remove('recording');
+
+            appendStreamResult('录音已停止', 'info');
+        }
+
+        function convertFloat32ToInt16(buffer) {
+            const l = buffer.length;
+            const buf = new Int16Array(l);
+            for (let i = 0; i < l; i++) {
+                buf[i] = Math.min(1, buffer[i]) * 0x7FFF;
+            }
+            return buf;
+        }
+
+        function handleWebSocketMessage(data) {
+            if (data.type === 'partial') {
+                appendStreamResult(`[部分结果] ${data.text}`, 'partial');
+            } else if (data.type === 'result') {
+                appendStreamResult(`[最终结果] ${data.text}`, 'result');
+            } else if (data.type === 'error') {
+                appendStreamResult(`[错误] ${data.error}`, 'error');
+            }
+        }
+
+        function updateWSStatus(text, isConnected) {
+            const indicator = document.getElementById('wsStatus');
+            const statusText = document.getElementById('wsStatusText');
+            indicator.className = `status-indicator ${isConnected ? 'status-healthy' : 'status-error'}`;
+            statusText.textContent = text;
+        }
+
+        function appendStreamResult(text, type = 'info') {
+            const resultBox = document.getElementById('streamingResult');
+            if (resultBox.querySelector('.empty')) {
+                resultBox.innerHTML = '';
+            }
+
+            const entry = document.createElement('div');
+            entry.className = `log-entry log-${type}`;
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${text}`;
+            resultBox.appendChild(entry);
+            resultBox.scrollTop = resultBox.scrollHeight;
+        }
+
+        function clearStreamResult() {
+            document.getElementById('streamingResult').innerHTML = '<div class="empty">点击"开始录音"开始实时识别...</div>';
+        }
+
+        // 离线语音识别
+        function handleFileSelect(event) {
+            selectedFile = event.target.files[0];
+            if (selectedFile) {
+                document.getElementById('fileInfo').textContent = `已选择: ${selectedFile.name} (${(selectedFile.size / 1024).toFixed(2)} KB)`;
+                document.getElementById('uploadBtn').disabled = false;
+            }
+        }
+
+        async function uploadAudioFile() {
+            if (!selectedFile) {
+                alert('请先选择音频文件');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('audio_file', selectedFile);
+
+            const resultBox = document.getElementById('offlineResult');
+            resultBox.innerHTML = '<div class="empty">处理中，请稍候...</div>';
+
+            document.getElementById('uploadBtn').disabled = true;
+
+            try {
+                const response = await fetch(`${serverUrl}/api/v1/offline/asr`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    resultBox.innerHTML = `
+                        <div><strong>识别结果:</strong></div>
+                        <div style="margin-top: 10px; padding: 10px; background: white; border-radius: 4px;">
+                            ${data.text || '(无结果)'}
+                        </div>
+                        ${data.duration ? `<div style="margin-top: 10px; color: #666;">音频时长: ${data.duration.toFixed(2)} 秒</div>` : ''}
+                    `;
+                } else {
+                    resultBox.innerHTML = `<div class="log-error">错误: ${data.error || '识别失败'}</div>`;
+                }
+            } catch (error) {
+                resultBox.innerHTML = `<div class="log-error">请求失败: ${error.message}</div>`;
+                console.error('Upload error:', error);
+            } finally {
+                document.getElementById('uploadBtn').disabled = false;
+            }
+        }
+
+        function clearOfflineResult() {
+            document.getElementById('offlineResult').innerHTML = '<div class="empty">选择音频文件并上传以进行离线识别...</div>';
+            document.getElementById('fileInfo').textContent = '';
+            document.getElementById('audioFile').value = '';
+            selectedFile = null;
+            document.getElementById('uploadBtn').disabled = true;
+        }
+
+        // 说话者分离
+        function handleDiarizationFileSelect(event) {
+            selectedDiarizationFile = event.target.files[0];
+            if (selectedDiarizationFile) {
+                document.getElementById('diarizationFileInfo').textContent = `已选择: ${selectedDiarizationFile.name} (${(selectedDiarizationFile.size / 1024).toFixed(2)} KB)`;
+                document.getElementById('diarizationBtn').disabled = false;
+            }
+        }
+
+        async function uploadDiarizationFile() {
+            if (!selectedDiarizationFile) {
+                alert('请先选择音频文件');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('audio_file', selectedDiarizationFile);
+
+            const resultBox = document.getElementById('diarizationResult');
+            resultBox.innerHTML = '<div class="empty">处理中，请稍候（这可能需要一些时间）...</div>';
+
+            document.getElementById('diarizationBtn').disabled = true;
+
+            try {
+                const response = await fetch(`${serverUrl}/api/v1/offline/asr/diarization`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    let resultHTML = '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;"><strong>说话者分离结果</strong>';
+
+                    if (data.duration) {
+                        resultHTML += `<span style="color: #666; font-size: 0.9em;">总时长: ${data.duration.toFixed(2)}s</span>`;
+                    }
+                    resultHTML += '</div>';
+
+                    if (data.segments && data.segments.length > 0) {
+                        resultHTML += '<div style="margin-top: 8px; max-height: 400px; overflow-y: auto; flex-direction: column; display: flex; gap: 2px;">';
+
+                        // 定义说话者颜色
+                        const speakerColors = ['#667eea', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
+
+                        data.segments.forEach((segment, index) => {
+                            // speaker 可能是数字或字符串，统一处理
+                            const speakerNum = typeof segment.speaker === 'number' ? segment.speaker : parseInt(String(segment.speaker).replace(/[^0-9]/g, '')) || 0;
+                            const color = speakerColors[speakerNum % speakerColors.length];
+
+                            resultHTML += `
+                                <div style="margin-bottom: 2px; padding: 6px 10px; background: white; border-radius: 4px; border-left: 3px solid ${color}; display: flex; flex-direction: column; gap: 2px;">
+                                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                                        <span style="color: ${color}; font-weight: 600; font-size: 0.85em;">说话者 ${segment.speaker}</span>
+                                        <span style="color: #9ca3af; font-size: 0.8em;">${segment.start.toFixed(1)}s - ${segment.end.toFixed(1)}s</span>
+                                    </div>
+                                    <div style="color: #374151; line-height: 1.4; font-size: 0.95em;">${segment.text}</div>
+                                </div>
+                            `;
+                        });
+                        resultHTML += '</div>';
+                    } else {
+                        resultHTML += '<div style="margin-top: 10px; color: #666; text-align: center; padding: 20px;">(无分段结果)</div>';
+                    }
+
+                    resultBox.innerHTML = resultHTML;
+                } else {
+                    resultBox.innerHTML = `<div class="log-error">错误: ${data.error || '分析失败'}</div>`;
+                }
+            } catch (error) {
+                resultBox.innerHTML = `<div class="log-error">请求失败: ${error.message}</div>`;
+                console.error('Diarization error:', error);
+            } finally {
+                document.getElementById('diarizationBtn').disabled = false;
+            }
+        }
+
+        function clearDiarizationResult() {
+            document.getElementById('diarizationResult').innerHTML = '<div class="empty">选择音频文件以进行说话者分离识别...</div>';
+            document.getElementById('diarizationFileInfo').textContent = '';
+            document.getElementById('diarizationFile').value = '';
+            selectedDiarizationFile = null;
+            document.getElementById('diarizationBtn').disabled = true;
+        }
+
+        // API 测试
+        async function testHealthAPI() {
+            const resultBox = document.getElementById('apiResult');
+            resultBox.innerHTML = '<div class="empty">请求中...</div>';
+
+            try {
+                const response = await fetch(`${serverUrl}/health`);
+                const data = await response.json();
+                resultBox.innerHTML = `<pre>${JSON.stringify(data, null, 2)}</pre>`;
+            } catch (error) {
+                resultBox.innerHTML = `<div class="log-error">请求失败: ${error.message}</div>`;
+            }
+        }
+
+        async function testInfoAPI() {
+            const resultBox = document.getElementById('apiResult');
+            resultBox.innerHTML = '<div class="empty">请求中...</div>';
+
+            try {
+                const response = await fetch(`${serverUrl}/`);
+                const data = await response.json();
+                resultBox.innerHTML = `<pre>${JSON.stringify(data, null, 2)}</pre>`;
+            } catch (error) {
+                resultBox.innerHTML = `<div class="log-error">请求失败: ${error.message}</div>`;
+            }
+        }
+
+        async function testStatsAPI() {
+            const resultBox = document.getElementById('apiResult');
+            resultBox.innerHTML = '<div class="empty">请求中...</div>';
+
+            try {
+                const response = await fetch(`${serverUrl}/api/v1/stats`);
+                const data = await response.json();
+                resultBox.innerHTML = `<pre>${JSON.stringify(data, null, 2)}</pre>`;
+            } catch (error) {
+                resultBox.innerHTML = `<div class="log-error">请求失败: ${error.message}</div>`;
+            }
+        }
+
+        // 定期检查健康状态
+        setInterval(checkHealth, 30000); // 每30秒检查一次
+    </script>
+</body>
+
+</html>

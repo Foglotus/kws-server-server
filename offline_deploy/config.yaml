@@ -1,0 +1,96 @@
+server:
+  host: "0.0.0.0"
+  port: 11123
+  max_connections: 1000
+  read_timeout: 60
+  write_timeout: 60
+
+# 实时语音识别配置（Streaming ASR）
+streaming_asr:
+  enabled: true
+  model_type: "zipformer" # zipformer, paraformer, etc.
+  models_dir: "/models/streaming/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20"
+  # Transducer 模型配置
+  encoder: "encoder-epoch-99-avg-1.onnx"
+  decoder: "decoder-epoch-99-avg-1.onnx"
+  joiner: "joiner-epoch-99-avg-1.onnx"
+  tokens: "tokens.txt"
+  # 推理配置
+  num_threads: 6
+  sample_rate: 16000
+  feature_dim: 80
+  # 端点检测配置
+  enable_endpoint: true
+  rule1_min_trailing_silence: 2.4
+  rule2_min_trailing_silence: 1.2
+  rule3_min_utterance_length: 20
+
+# 离线语音识别配置（Non-streaming ASR）
+offline_asr:
+  enabled: true
+  model_type: "paraformer" # whisper, paraformer, etc.
+  models_dir: "/models/offline/sherpa-onnx-paraformer-zh-2023-09-14"
+  # Paraformer 模型配置
+  encoder: "model.int8.onnx"
+  decoder: "decoder.onnx"
+  tokens: "tokens.txt"
+  # 推理配置
+  num_threads: 6
+  sample_rate: 16000
+  decoding_method: "greedy_search"
+  max_active_paths: 4
+
+# 说话者分离配置（Speaker Diarization）
+speaker_diarization:
+  enabled: true
+  models_dir: "/models/diarization"
+  # 分割模型
+  segmentation_model: "sherpa-onnx-pyannote-segmentation-3-0/model.onnx"
+  # 说话者嵌入模型
+  embedding_model: "3dspeaker_speech_eres2net_base_sv_zh-cn_3dspeaker_16k.onnx"
+  # 聚类配置
+  clustering:
+    # 如果知道说话者数量，设置此项
+    num_clusters: 0
+    # 如果不知道说话者数量，使用阈值（提高阈值以减少说话者过度分割）
+    # 范围: 0.0-1.0，值越高，越倾向于认为是同一个人
+    # 0.5: 容易过度分割，产生过多说话者
+    # 0.85: 平衡值
+    # 0.95: 更严格，适合对话人数较少的场景
+    threshold: 0.90
+    # 最大说话者数量限制（防止异常情况）
+    max_speakers: 4
+  num_threads: 6
+
+# VAD（语音活动检测）配置
+vad:
+  enabled: true
+  model: "/models/vad/silero_vad.onnx"
+  sample_rate: 16000
+  min_silence_duration: 500 # ms
+  min_speech_duration: 250 # ms
+  threshold: 0.5
+  window_size: 512
+  num_threads: 6
+
+# 标点符号配置（Punctuation）
+punctuation:
+  enabled: true
+  model_dir: "/models/punctuation"
+  model: "sherpa-onnx-punct-ct-transformer-zh-en-vocab272727-2024-04-12/model.onnx"
+  num_threads: 6
+
+# 并发控制
+concurrency:
+  max_streaming_sessions: 100
+  max_offline_jobs: 50
+  worker_pool_size: 20
+  queue_size: 1000
+
+# 日志配置
+logging:
+  level: "info" # debug, info, warn, error
+  file: "/logs/airecorder.log"
+  max_size: 100 # MB
+  max_backups: 5
+  max_age: 30 # days

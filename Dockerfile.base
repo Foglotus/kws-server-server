@@ -1,0 +1,38 @@
+# 基础运行环境镜像 - ARM64 架构
+# 这个镜像只包含运行时依赖，不包含程序本身
+# 可以长期使用，无需频繁更新
+
+FROM --platform=linux/arm64 debian:bookworm-slim
+
+# 元数据标签
+LABEL org.opencontainers.image.title="AI Recorder Base Runtime"
+LABEL org.opencontainers.image.description="Base runtime environment for AI Recorder"
+
+# 安装运行时依赖
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    tzdata \
+    libstdc++6 \
+    wget \
+    && rm -rf /var/lib/apt/lists/*
+
+# 设置时区
+ENV TZ=Asia/Shanghai
+
+# 创建应用目录
+WORKDIR /app
+
+# 创建必要的目录
+RUN mkdir -p /models/streaming \
+    && mkdir -p /models/offline \
+    && mkdir -p /models/diarization \
+    && mkdir -p /models/vad \
+    && mkdir -p /models/punctuation \
+    && mkdir -p /logs \
+    && mkdir -p /app/static
+
+# 暴露端口
+EXPOSE 11123
+
+# 默认命令（会被 docker-compose 覆盖）
+CMD ["./airecorder"]

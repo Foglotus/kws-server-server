@@ -1,0 +1,28 @@
+AI Recorder 运行时部署包
+========================================
+版本号: 1.0.0
+部署模式: 运行时模式（快速更新）
+构建时间: 2025-11-14_06:30:52
+
+文件列表:
+----------------------------------------
+1. bin/airecorder             - 编译程序 (8.0M)
+2. bin/lib/                   - 共享库文件
+3. airecorder-base.tar.gz     - 基础镜像 (31M)
+4. models.tar.gz              - AI 模型 (1009M)
+5. docker-compose.runtime.yml - 运行时配置
+6. config.yaml                - 配置文件
+7. deploy.sh                  - 智能部署脚本 ⭐
+
+部署方法:
+----------------------------------------
+1. 将 offline_deploy 目录复制到目标机器
+2. cd offline_deploy && chmod +x deploy.sh
+3. ./deploy.sh  # 自动检测并部署
+
+快速更新（仅替换程序）:
+----------------------------------------
+下次代码修改后，只需传输 bin/ 目录：
+  scp -r bin/ user@server:/path/offline_deploy/
+  ssh user@server 'cd /path/offline_deploy && docker-compose -f docker-compose.runtime.yml restart'
+========================================

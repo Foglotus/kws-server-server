@@ -1,0 +1,73 @@
+server:
+  host: "0.0.0.0"
+  port: 11123
+  max_connections: 1000
+  read_timeout: 60
+  write_timeout: 60
+
+# 实时语音识别配置（Streaming ASR）
+streaming_asr:
+  enabled: true
+  model_type: "zipformer"
+  models_dir: "models/streaming/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20"
+  encoder: "encoder-epoch-99-avg-1.int8.onnx"
+  decoder: "decoder-epoch-99-avg-1.int8.onnx"
+  joiner: "joiner-epoch-99-avg-1.int8.onnx"
+  tokens: "tokens.txt"
+  num_threads: 4
+  sample_rate: 16000
+  feature_dim: 80
+  enable_endpoint: true
+  rule1_min_trailing_silence: 2.4
+  rule2_min_trailing_silence: 1.2
+  rule3_min_utterance_length: 20
+
+# 离线语音识别配置（Non-streaming ASR）
+offline_asr:
+  enabled: true
+  model_type: "paraformer"
+  models_dir: "/Users/ikd_elaiza/Documents/zq/airecorder/models/offline/sherpa-onnx-paraformer-zh-2023-09-14"
+  encoder: "model.int8.onnx"
+  decoder: ""
+  tokens: "tokens.txt"
+  num_threads: 4
+  sample_rate: 16000
+  decoding_method: "greedy_search"
+  max_active_paths: 4
+
+# 说话者分离配置（Speaker Diarization）
+speaker_diarization:
+  enabled: true
+  models_dir: "/Users/ikd_elaiza/Documents/zq/airecorder/models/diarization"
+  segmentation_model: "sherpa-onnx-pyannote-segmentation-3-0/model.onnx"
+  embedding_model: "3dspeaker_speech_eres2net_base_sv_zh-cn_3dspeaker_16k.onnx"
+  clustering:
+    num_clusters: 0
+    threshold: 0.5
+  num_threads: 2
+
+# VAD（语音活动检测）配置
+vad:
+  enabled: true
+  model: "models/vad/silero_vad.onnx"
+  sample_rate: 16000
+  min_silence_duration: 500
+  min_speech_duration: 250
+  threshold: 0.5
+  window_size: 512
+  num_threads: 1
+
+# 并发控制
+concurrency:
+  max_streaming_sessions: 100
+  max_offline_jobs: 50
+  worker_pool_size: 20
+  queue_size: 1000
+
+# 日志配置
+logging:
+  level: "info"
+  file: "logs/airecorder.log"
+  max_size: 100
+  max_backups: 5
+  max_age: 30

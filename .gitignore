@@ -1,0 +1,51 @@
+# 构建产物
+airecorder
+*.exe
+*.dll
+*.so
+*.dylib
+
+# 编译输出目录
+bin/
+update_package/
+*.tar.gz
+*.md5
+
+# 测试文件
+*.test
+*.out
+
+# Go 工作空间
+go.work
+
+# 依赖目录
+vendor/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# 日志文件
+logs/
+*.log
+
+# 模型文件
+models/
+
+# 临时文件
+tmp/
+temp/
+
+# OS 文件
+.DS_Store
+Thumbs.db
+
+# Docker
+.dockerignore
+
+# 配置文件备份
+config.yaml.bak
+*.yaml.bak
