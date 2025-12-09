@@ -3,6 +3,7 @@ package handler
 import (
 	"net/http"
 
+	"airecorder/internal/audio"
 	"airecorder/internal/version"
 
 	"github.com/gin-gonic/gin"
@@ -36,5 +37,6 @@ func Index(c *gin.Context) {
 			"diarization":              "/api/v1/diarization (POST)",
 			"stats":                    "/api/v1/stats (GET)",
 		},
+		"supported_audio_formats": audio.GetSupportedFormats(),
 	})
 }

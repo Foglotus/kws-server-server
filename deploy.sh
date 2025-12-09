@@ -93,13 +93,13 @@ docker-compose ps
 # 测试健康检查
 echo ""
 echo "测试健康检查..."
-if curl -s http://localhost:11123/health | grep -q "healthy"; then
+if curl -s http://localhost:11123/realkws/health | grep -q "healthy"; then
     echo "✓ 服务运行正常"
     
     # 显示版本信息
     echo ""
     echo "服务版本信息:"
-    curl -s http://localhost:11123/health | python3 -m json.tool 2>/dev/null || echo "无法获取版本信息"
+    curl -s http://localhost:11123/realkws/health | python3 -m json.tool 2>/dev/null || echo "无法获取版本信息"
 else
     echo "✗ 服务可能未正常启动，请检查日志"
     docker-compose logs --tail=50

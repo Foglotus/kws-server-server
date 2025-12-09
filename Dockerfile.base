@@ -8,11 +8,12 @@ FROM --platform=linux/arm64 debian:bookworm-slim
 LABEL org.opencontainers.image.title="AI Recorder Base Runtime"
 LABEL org.opencontainers.image.description="Base runtime environment for AI Recorder"
 
-# 安装运行时依赖
+# 安装运行时依赖（包含 FFmpeg 用于音频格式转换）
 RUN apt-get update && apt-get install -y \
     ca-certificates \
     tzdata \
     libstdc++6 \
+    ffmpeg \
     wget \
     && rm -rf /var/lib/apt/lists/*
 

@@ -192,12 +192,12 @@ fi
 # 健康检查
 log_info "执行健康检查..."
 for i in {1..10}; do
-    if curl -s http://localhost:$SERVICE_PORT/health > /dev/null 2>&1; then
+    if curl -s http://localhost:$SERVICE_PORT/realkws/health > /dev/null 2>&1; then
         log_success "服务健康检查通过"
         
         # 显示版本信息
         log_info "获取服务版本信息..."
-        VERSION_INFO=$(curl -s http://localhost:$SERVICE_PORT/health 2>/dev/null)
+        VERSION_INFO=$(curl -s http://localhost:$SERVICE_PORT/realkws/health 2>/dev/null)
         if [ -n "$VERSION_INFO" ]; then
             echo "$VERSION_INFO" | grep -o '"version":"[^"]*"' || true
         fi
@@ -205,7 +205,7 @@ for i in {1..10}; do
     fi
     if [ $i -eq 10 ]; then
         log_warning "健康检查超时，服务可能需要更长时间启动"
-        log_info "可以稍后手动检查: curl http://localhost:$SERVICE_PORT/health"
+        log_info "可以稍后手动检查: curl http://localhost:$SERVICE_PORT/realkws/health"
     fi
     sleep 3
 done
@@ -228,7 +228,7 @@ echo ""
 echo "🌐 访问地址:"
 echo "  - HTTP 服务: http://localhost:$SERVICE_PORT"
 echo "  - Web 界面: http://localhost:$SERVICE_PORT"
-echo "  - 健康检查: http://localhost:$SERVICE_PORT/health"
+echo "  - 健康检查: http://localhost:$SERVICE_PORT/realkws/health"
 echo ""
 echo "🔧 管理命令:"
 echo "  - 查看状态: docker ps | grep $CONTAINER_NAME"

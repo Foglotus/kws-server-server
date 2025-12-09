@@ -43,16 +43,20 @@ type StreamingASRConfig struct {
 }
 
 type OfflineASRConfig struct {
-	Enabled        bool   `yaml:"enabled"`
-	ModelType      string `yaml:"model_type"`
-	ModelsDir      string `yaml:"models_dir"`
-	Encoder        string `yaml:"encoder"`
-	Decoder        string `yaml:"decoder"`
-	Tokens         string `yaml:"tokens"`
-	NumThreads     int    `yaml:"num_threads"`
-	SampleRate     int    `yaml:"sample_rate"`
-	DecodingMethod string `yaml:"decoding_method"`
-	MaxActivePaths int    `yaml:"max_active_paths"`
+	Enabled                 bool   `yaml:"enabled"`
+	ModelType               string `yaml:"model_type"`
+	ModelsDir               string `yaml:"models_dir"`
+	Encoder                 string `yaml:"encoder"`
+	Decoder                 string `yaml:"decoder"`
+	Tokens                  string `yaml:"tokens"`
+	NumThreads              int    `yaml:"num_threads"`
+	SampleRate              int    `yaml:"sample_rate"`
+	DecodingMethod          string `yaml:"decoding_method"`
+	MaxActivePaths          int    `yaml:"max_active_paths"`
+	MaxFileSizeMB           int    `yaml:"max_file_size_mb"`           // 最大文件大小（MB）
+	ChunkDurationSec        int    `yaml:"chunk_duration_sec"`         // 分块处理时长（秒）
+	MaxConcurrency          int    `yaml:"max_concurrency"`            // 最大并发处理数
+	MaxProcessingTimeoutMin int    `yaml:"max_processing_timeout_min"` // 最大处理超时时间（分钟）
 }
 
 type SpeakerDiarizationConfig struct {

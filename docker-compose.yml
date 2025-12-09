@@ -42,8 +42,10 @@ services:
           "wget",
           "--no-verbose",
           "--tries=1",
-          "--spider",
-          "http://localhost:11123/health",
+          "--method=GET",
+          "-O",
+          "/dev/null",
+          "http://localhost:11123/realkws/health",
         ]
       interval: 30s
       timeout: 10s

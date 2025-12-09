@@ -438,8 +438,52 @@ curl http://localhost:11123/api/v1/stats
 
 ### 支持的格式
 
+**自动格式检测和转换**：服务现在支持多种音频格式的自动检测和转换。
+
+#### 直接支持的格式
+- **WAV**: PCM 编码的 WAV 文件
+  - 采样率: 任意（自动重采样至 16kHz）
+  - 位深: 8-bit, 16-bit, 32-bit
+  - 声道: 单声道或多声道（自动转为单声道）
+
+#### 通过 FFmpeg 支持的格式
+当系统安装了 FFmpeg 时，还支持以下格式：
+- **MP3**: MPEG Audio Layer 3
+- **M4A/MP4**: MPEG-4 Audio
+- **FLAC**: Free Lossless Audio Codec
+- **OGG**: Ogg Vorbis
+- **OPUS**: Opus Audio
+- **AAC**: Advanced Audio Coding
+- **WMA**: Windows Media Audio
+- **AMR**: Adaptive Multi-Rate
+
+**注意**：
+- 如果未安装 FFmpeg，只支持 WAV 格式
+- 建议安装 FFmpeg 以获得完整的格式支持
+- 所有格式都会自动转换为 16kHz, 16-bit, 单声道 PCM 进行处理
+
+### FFmpeg 安装
+
+**macOS**:
+```bash
+brew install ffmpeg
+```
+
+**Ubuntu/Debian**:
+```bash
+apt-get install ffmpeg
+```
+
+**CentOS/RHEL**:
+```bash
+yum install ffmpeg
+```
+
+### 推荐配置
+
+虽然支持多种格式，但为了最佳性能，推荐使用：
 - **编码**: PCM (未压缩)
-- **采样率**: 16000 Hz (推荐)
+- **采样率**: 16000 Hz
 - **位深**: 16-bit
 - **声道**: 单声道 (Mono)
 - **字节序**: 小端序 (Little-endian)
@@ -449,8 +493,50 @@ curl http://localhost:11123/api/v1/stats
 使用 FFmpeg 转换音频格式：
 
 ```bash
+# 转换为推荐格式
 ffmpeg -i input.mp3 -ar 16000 -ac 1 -f s16le -acodec pcm_s16le output.wav
+
+# 从视频中提取音频
+ffmpeg -i video.mp4 -ar 16000 -ac 1 output.wav
+
+# 批量转换
+for file in *.mp3; do
+  ffmpeg -i "$file" -ar 16000 -ac 1 "${file%.mp3}.wav"
+done
 ```
+
+### 使用示例
+
+#### 1. 上传 MP3 文件
+
+```bash
+curl -X POST http://localhost:11123/api/v1/offline/asr \
+  -F "audio_file=@recording.mp3"
+```
+
+#### 2. 上传 M4A 文件
+
+```bash
+curl -X POST http://localhost:11123/api/v1/offline/asr \
+  -F "audio_file=@voice_memo.m4a"
+```
+
+#### 3. 上传 FLAC 文件
+
+```bash
+curl -X POST http://localhost:11123/api/v1/offline/asr \
+  -F "audio_file=@high_quality.flac"
+```
+
+### 检查支持的格式
+
+访问服务根路径可以查看当前支持的音频格式：
+
+```bash
+curl http://localhost:11123/
+```
+
+响应中的 `supported_audio_formats` 字段会列出所有支持的格式。
 
 ---
 

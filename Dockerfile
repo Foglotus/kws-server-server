@@ -1,5 +1,5 @@
 # 多阶段构建 - ARM64 架构
-FROM --platform=linux/arm64 golang:1.21-bookworm AS builder
+FROM --platform=linux/arm64 golang:1.23-bookworm AS builder
 
 # 版本参数
 ARG VERSION=dev
@@ -49,11 +49,13 @@ LABEL org.opencontainers.image.version="${VERSION}"
 LABEL org.opencontainers.image.created="${BUILD_TIME}"
 LABEL org.opencontainers.image.revision="${GIT_COMMIT}"
 
-# 安装运行时依赖
+# 安装运行时依赖（包含 FFmpeg 用于音频格式转换）
 RUN apt-get update && apt-get install -y \
   ca-certificates \
   tzdata \
   libstdc++6 \
+  ffmpeg \
+  wget \
   && rm -rf /var/lib/apt/lists/*
 
 # 设置时区
@@ -86,9 +88,9 @@ RUN mkdir -p /models/streaming \
 # 暴露端口
 EXPOSE 11123
 
-# 健康检查
+# 健康检查（显式 GET，避免 HEAD 请求导致 404 日志）
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:11123/health || exit 1
+  CMD wget --no-verbose --tries=1 --method=GET -O /dev/null http://localhost:11123/realkws/health || exit 1
 
 # 运行应用
 CMD ["./airecorder"]

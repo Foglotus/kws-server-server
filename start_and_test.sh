@@ -30,7 +30,7 @@ MAX_RETRIES=10
 RETRY_COUNT=0
 
 while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
-    if curl -s http://localhost:11123/health > /dev/null 2>&1; then
+    if curl -s http://localhost:11123/realkws/health > /dev/null 2>&1; then
         echo "✅ 服务启动成功！"
         break
     fi
@@ -54,7 +54,7 @@ echo ""
 echo "📍 服务地址:"
 echo "   - Web 测试页面: http://localhost:11123/test"
 echo "   - API 基础地址: http://localhost:11123"
-echo "   - 健康检查: http://localhost:11123/health"
+echo "   - 健康检查: http://localhost:11123/realkws/health"
 echo ""
 echo "📚 文档:"
 echo "   - API 文档: API_DOCS.md"

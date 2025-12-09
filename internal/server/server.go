@@ -12,6 +12,7 @@ import (
 	"airecorder/internal/config"
 	"airecorder/internal/handler"
 
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 )
 
@@ -21,6 +22,7 @@ type Server struct {
 	streamingASR   *asr.StreamingASRManager
 	offlineASR     *asr.OfflineASRManager
 	diarizationMgr *asr.DiarizationManager
+	taskQueue      *asr.TaskQueue
 	httpServer     *http.Server
 	shutdown       chan struct{}
 	wg             sync.WaitGroup
@@ -35,6 +37,23 @@ func NewServer(cfg *config.Config) *Server {
 	}
 
 	router := gin.Default()
+
+	// 设置上传文件大小限制（默认50MB）
+	maxFileSizeMB := cfg.OfflineASR.MaxFileSizeMB
+	if maxFileSizeMB <= 0 {
+		maxFileSizeMB = 50
+	}
+	router.MaxMultipartMemory = int64(maxFileSizeMB) << 20 // MB to bytes
+
+	// 配置 CORS 允许跨域
+	router.Use(cors.New(cors.Config{
+		AllowOrigins:     []string{"*"},
+		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization", "X-Requested-With"},
+		ExposeHeaders:    []string{"Content-Length"},
+		AllowCredentials: true,
+		MaxAge:           12 * time.Hour,
+	}))
 
 	// 初始化服务器
 	srv := &Server{
@@ -54,6 +73,11 @@ func NewServer(cfg *config.Config) *Server {
 
 	if cfg.SpeakerDiarization.Enabled {
 		srv.diarizationMgr = asr.NewDiarizationManager(cfg)
+	}
+
+	// 初始化任务队列（用于处理长时间音频）
+	if cfg.OfflineASR.Enabled {
+		srv.taskQueue = asr.NewTaskQueue(cfg, srv.offlineASR)
 	}
 
 	// 设置路由
@@ -90,13 +114,13 @@ func (s *Server) setupRoutes() {
 			if s.config.OfflineASR.Enabled {
 				// 普通模式（不带说话者分离）
 				api.POST("/offline/asr", func(c *gin.Context) {
-					handler.HandleOfflineASR(c, s.offlineASR, nil)
+					handler.HandleOfflineASRWithQueue(c, s.offlineASR, nil, s.taskQueue)
 				})
 
 				// 带说话者分离模式
 				if s.config.SpeakerDiarization.Enabled {
 					api.POST("/offline/asr/diarization", func(c *gin.Context) {
-						handler.HandleOfflineASR(c, s.offlineASR, s.diarizationMgr)
+						handler.HandleOfflineASRWithQueue(c, s.offlineASR, s.diarizationMgr, s.taskQueue)
 					})
 				}
 			}
@@ -119,11 +143,23 @@ func (s *Server) setupRoutes() {
 func (s *Server) Start() error {
 	addr := fmt.Sprintf("%s:%d", s.config.Server.Host, s.config.Server.Port)
 
+	// 设置超时时间，对于长时间处理的任务（如大文件ASR），需要足够长的超时时间
+	readTimeout := time.Duration(s.config.Server.ReadTimeout) * time.Second
+	writeTimeout := time.Duration(s.config.Server.WriteTimeout) * time.Second
+
+	// 确保至少有20分钟的写超时，以支持大文件处理
+	if writeTimeout < 20*time.Minute {
+		writeTimeout = 20 * time.Minute
+	}
+	if readTimeout < 20*time.Minute {
+		readTimeout = 20 * time.Minute
+	}
+
 	s.httpServer = &http.Server{
 		Addr:         addr,
 		Handler:      s.router,
-		ReadTimeout:  time.Duration(s.config.Server.ReadTimeout) * time.Second,
-		WriteTimeout: time.Duration(s.config.Server.WriteTimeout) * time.Second,
+		ReadTimeout:  readTimeout,
+		WriteTimeout: writeTimeout,
 	}
 
 	// 启动 HTTP 服务器
@@ -151,6 +187,11 @@ func (s *Server) Stop() error {
 	// 关闭 HTTP 服务器
 	if err := s.httpServer.Shutdown(ctx); err != nil {
 		log.Printf("Server shutdown error: %v", err)
+	}
+
+	// 关闭任务队列
+	if s.taskQueue != nil {
+		s.taskQueue.Close()
 	}
 
 	// 关闭 ASR 管理器

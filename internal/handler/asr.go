@@ -2,11 +2,13 @@ package handler
 
 import (
 	"encoding/base64"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
 
 	"airecorder/internal/asr"
+	"airecorder/internal/audio"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
@@ -178,7 +180,14 @@ type DiarizationSegment struct {
 
 // HandleOfflineASR 处理离线语音识别
 func HandleOfflineASR(c *gin.Context, asrManager *asr.OfflineASRManager, diarizationMgr *asr.DiarizationManager) {
+	HandleOfflineASRWithQueue(c, asrManager, diarizationMgr, nil)
+}
+
+// HandleOfflineASRWithQueue 处理离线语音识别（带队列支持）
+func HandleOfflineASRWithQueue(c *gin.Context, asrManager *asr.OfflineASRManager, diarizationMgr *asr.DiarizationManager, taskQueue *asr.TaskQueue) {
 	var req OfflineASRRequest
+	var audioData []byte
+	var fileSize int64
 
 	// 支持 JSON 和 Form 数据
 	if c.ContentType() == "application/json" {
@@ -188,10 +197,33 @@ func HandleOfflineASR(c *gin.Context, asrManager *asr.OfflineASRManager, diariza
 			})
 			return
 		}
+
+		// 解码 Base64 音频数据
+		var err error
+		audioData, err = base64.StdEncoding.DecodeString(req.Audio)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, OfflineASRResponse{
+				Error: "Invalid audio data: " + err.Error(),
+			})
+			return
+		}
+		fileSize = int64(len(audioData))
 	} else {
 		// 处理文件上传
 		file, err := c.FormFile("audio_file")
 		if err == nil {
+			fileSize = file.Size
+
+			// 检查文件大小（从配置获取，默认50MB）
+			maxFileSizeMB := asrManager.GetMaxFileSizeMB()
+			maxFileSize := int64(maxFileSizeMB) << 20
+			if fileSize > maxFileSize {
+				c.JSON(http.StatusRequestEntityTooLarge, OfflineASRResponse{
+					Error: fmt.Sprintf("File size (%d MB) exceeds maximum allowed size (%d MB)", fileSize>>20, maxFileSizeMB),
+				})
+				return
+			}
+
 			// 读取文件
 			f, err := file.Open()
 			if err != nil {
@@ -202,16 +234,13 @@ func HandleOfflineASR(c *gin.Context, asrManager *asr.OfflineASRManager, diariza
 			}
 			defer f.Close()
 
-			audioBytes, err := io.ReadAll(f)
+			audioData, err = io.ReadAll(f)
 			if err != nil {
 				c.JSON(http.StatusBadRequest, OfflineASRResponse{
 					Error: "Failed to read file: " + err.Error(),
 				})
 				return
 			}
-
-			req.Audio = base64.StdEncoding.EncodeToString(audioBytes)
-			req.SampleRate = 16000 // 默认采样率
 		} else {
 			if err := c.ShouldBind(&req); err != nil {
 				c.JSON(http.StatusBadRequest, OfflineASRResponse{
@@ -219,24 +248,96 @@ func HandleOfflineASR(c *gin.Context, asrManager *asr.OfflineASRManager, diariza
 				})
 				return
 			}
+
+			// 解码 Base64 音频数据
+			audioData, err = base64.StdEncoding.DecodeString(req.Audio)
+			if err != nil {
+				c.JSON(http.StatusBadRequest, OfflineASRResponse{
+					Error: "Invalid audio data: " + err.Error(),
+				})
+				return
+			}
+			fileSize = int64(len(audioData))
 		}
 	}
 
-	// 解码音频数据
-	audioData, err := base64.StdEncoding.DecodeString(req.Audio)
-	if err != nil {
+	log.Printf("Processing audio file: size=%d bytes (%.2f MB)", fileSize, float64(fileSize)/(1024*1024))
+
+	// 使用音频转换器自动检测和转换格式
+	converter := audio.NewAudioConverter()
+	samples, sampleRate, convertErr := converter.ConvertToSamples(audioData)
+	if convertErr != nil {
 		c.JSON(http.StatusBadRequest, OfflineASRResponse{
-			Error: "Invalid audio data: " + err.Error(),
+			Error: "Audio format conversion failed: " + convertErr.Error(),
 		})
 		return
 	}
 
-	samples := bytesToFloat32(audioData)
+	log.Printf("Audio converted successfully: %d samples at %d Hz", len(samples), sampleRate)
+
+	// 如果请求中指定了采样率，使用转换后的实际采样率
 	if req.SampleRate == 0 {
-		req.SampleRate = 16000
+		req.SampleRate = sampleRate
 	}
 
-	// 如果 diarizationMgr 不为 nil，说明调用的是 diarization 端点，应该启用说话者分离
+	// 计算音频时长
+	audioDuration := float32(len(samples)) / float32(req.SampleRate)
+
+	// 判断是否使用队列处理（音频时长超过2分钟且队列可用）
+	useQueue := taskQueue != nil && audioDuration > 120.0 // 2分钟
+
+	if useQueue {
+		log.Printf("Audio duration (%.2fs) > 120s, using task queue", audioDuration)
+
+		// 创建任务
+		enableDiar := diarizationMgr != nil
+		task := asr.NewASRTask(samples, req.SampleRate, diarizationMgr, enableDiar)
+
+		// 提交任务
+		if err := taskQueue.Submit(task); err != nil {
+			c.JSON(http.StatusServiceUnavailable, OfflineASRResponse{
+				Error: "Task queue full: " + err.Error(),
+			})
+			return
+		}
+
+		// 等待任务完成（对调用方无感，阻塞等待）
+		result := task.Wait()
+
+		if result.Error != nil {
+			c.JSON(http.StatusInternalServerError, OfflineASRResponse{
+				Error: "Recognition error: " + result.Error.Error(),
+			})
+			return
+		}
+
+		// 返回结果
+		if enableDiar {
+			diarSegments := make([]DiarizationSegment, len(result.Segments))
+			for i, seg := range result.Segments {
+				diarSegments[i] = DiarizationSegment{
+					Start:   seg.Start,
+					End:     seg.End,
+					Speaker: seg.Speaker,
+					Text:    seg.Text,
+				}
+			}
+
+			c.JSON(http.StatusOK, OfflineASRResponse{
+				Text:     result.Text,
+				Segments: diarSegments,
+				Duration: result.Duration,
+			})
+		} else {
+			c.JSON(http.StatusOK, OfflineASRResponse{
+				Text:     result.Text,
+				Duration: result.Duration,
+			})
+		}
+		return
+	}
+
+	// 直接处理（不使用队列）
 	if diarizationMgr != nil {
 		segments, err := diarizationMgr.ProcessWithASR(samples, req.SampleRate, asrManager)
 		if err != nil {
@@ -259,18 +360,27 @@ func HandleOfflineASR(c *gin.Context, asrManager *asr.OfflineASRManager, diariza
 			}
 		}
 
-		duration := float32(len(samples)) / float32(req.SampleRate)
-
 		c.JSON(http.StatusOK, OfflineASRResponse{
 			Text:     fullText,
 			Segments: diarSegments,
-			Duration: duration,
+			Duration: audioDuration,
 		})
 		return
 	}
 
 	// 普通识别（不带说话者分离）
-	text, err := asrManager.Recognize(samples, req.SampleRate)
+	chunkDurationSec := asrManager.GetChunkDurationSec()
+
+	var text string
+	var err error
+
+	if audioDuration > float32(chunkDurationSec) {
+		log.Printf("Audio duration (%.2fs) exceeds chunk duration (%ds), using chunked processing", audioDuration, chunkDurationSec)
+		text, err = asrManager.RecognizeChunked(samples, req.SampleRate)
+	} else {
+		text, err = asrManager.Recognize(samples, req.SampleRate)
+	}
+
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, OfflineASRResponse{
 			Error: "Recognition error: " + err.Error(),
@@ -278,36 +388,84 @@ func HandleOfflineASR(c *gin.Context, asrManager *asr.OfflineASRManager, diariza
 		return
 	}
 
-	duration := float32(len(samples)) / float32(req.SampleRate)
-
 	c.JSON(http.StatusOK, OfflineASRResponse{
 		Text:     text,
-		Duration: duration,
+		Duration: audioDuration,
 	})
 }
 
 // HandleDiarization 处理独立的说话者分离请求
 func HandleDiarization(c *gin.Context, manager *asr.DiarizationManager) {
 	var req OfflineASRRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid request: " + err.Error(),
-		})
-		return
+	var audioData []byte
+
+	if c.ContentType() == "application/json" {
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "Invalid request: " + err.Error(),
+			})
+			return
+		}
+
+		// 解码音频数据
+		var err error
+		audioData, err = base64.StdEncoding.DecodeString(req.Audio)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "Invalid audio data: " + err.Error(),
+			})
+			return
+		}
+	} else {
+		// 处理文件上传
+		file, err := c.FormFile("audio_file")
+		if err == nil {
+			f, err := file.Open()
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{
+					"error": "Failed to open file: " + err.Error(),
+				})
+				return
+			}
+			defer f.Close()
+
+			audioData, err = io.ReadAll(f)
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{
+					"error": "Failed to read file: " + err.Error(),
+				})
+				return
+			}
+		} else {
+			if err := c.ShouldBind(&req); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{
+					"error": "Invalid request: " + err.Error(),
+				})
+				return
+			}
+
+			audioData, err = base64.StdEncoding.DecodeString(req.Audio)
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{
+					"error": "Invalid audio data: " + err.Error(),
+				})
+				return
+			}
+		}
 	}
 
-	// 解码音频数据
-	audioData, err := base64.StdEncoding.DecodeString(req.Audio)
+	// 使用音频转换器转换格式
+	converter := audio.NewAudioConverter()
+	samples, sampleRate, err := converter.ConvertToSamples(audioData)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid audio data: " + err.Error(),
+			"error": "Audio format conversion failed: " + err.Error(),
 		})
 		return
 	}
 
-	samples := bytesToFloat32(audioData)
 	if req.SampleRate == 0 {
-		req.SampleRate = 16000
+		req.SampleRate = sampleRate
 	}
 
 	segments, err := manager.Process(samples, req.SampleRate)

@@ -2,8 +2,8 @@ server:
   host: "127.0.0.1"  # 本地开发使用 localhost
   port: 11123
   max_connections: 100  # 本地开发降低限制
-  read_timeout: 60
-  write_timeout: 60
+  read_timeout: 1200  # 20分钟，支持大文件上传
+  write_timeout: 1200 # 20分钟，支持长时间处理
 
 # 实时语音识别配置（Streaming ASR）
 streaming_asr:
@@ -34,6 +34,10 @@ offline_asr:
   sample_rate: 16000
   decoding_method: "greedy_search"
   max_active_paths: 4
+  # 文件处理配置
+  max_file_size_mb: 1000   # 最大允许上传的文件大小（MB），支持超大文件
+  chunk_duration_sec: 60   # 分块处理时长（秒），建议30-60秒以提高处理效率
+  max_concurrency: 4       # 最大并发处理块数，增加到4以加快处理速度
 
 # 说话者分离配置（Speaker Diarization）
 speaker_diarization:
