@@ -506,6 +506,173 @@ func HandleStats(c *gin.Context, streamingMgr *asr.StreamingASRManager, offlineM
 	c.JSON(http.StatusOK, stats)
 }
 
+// OfflineASRAsyncResponse 异步提交响应
+type OfflineASRAsyncResponse struct {
+	TaskID string `json:"task_id"`
+	Status string `json:"status"`
+}
+
+// OfflineASRTaskResponse 任务查询响应
+type OfflineASRTaskResponse struct {
+	TaskID   string               `json:"task_id"`
+	Status   string               `json:"status"`
+	Text     string               `json:"text,omitempty"`
+	Segments []DiarizationSegment `json:"segments,omitempty"`
+	Duration float32              `json:"duration,omitempty"`
+	Error    string               `json:"error,omitempty"`
+}
+
+// taskStatusString 将内部状态枚举转成字符串
+func taskStatusString(s asr.TaskStatus) string {
+	switch s {
+	case asr.TaskStatusPending:
+		return "pending"
+	case asr.TaskStatusProcessing:
+		return "processing"
+	case asr.TaskStatusCompleted:
+		return "completed"
+	case asr.TaskStatusFailed:
+		return "failed"
+	default:
+		return "unknown"
+	}
+}
+
+// HandleOfflineASRAsync 异步提交离线识别任务，立即返回 taskId
+func HandleOfflineASRAsync(c *gin.Context, asrManager *asr.OfflineASRManager, diarizationMgr *asr.DiarizationManager, taskQueue *asr.TaskQueue) {
+	if taskQueue == nil {
+		c.JSON(http.StatusServiceUnavailable, OfflineASRAsyncResponse{
+			Status: "error",
+		})
+		return
+	}
+
+	var req OfflineASRRequest
+	var audioData []byte
+	var fileSize int64
+
+	if c.ContentType() == "application/json" {
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request: " + err.Error()})
+			return
+		}
+		var err error
+		audioData, err = base64.StdEncoding.DecodeString(req.Audio)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid audio data: " + err.Error()})
+			return
+		}
+		fileSize = int64(len(audioData))
+	} else {
+		file, err := c.FormFile("audio_file")
+		if err == nil {
+			fileSize = file.Size
+			maxFileSizeMB := asrManager.GetMaxFileSizeMB()
+			if fileSize > int64(maxFileSizeMB)<<20 {
+				c.JSON(http.StatusRequestEntityTooLarge, gin.H{
+					"error": fmt.Sprintf("File size (%d MB) exceeds maximum allowed size (%d MB)", fileSize>>20, maxFileSizeMB),
+				})
+				return
+			}
+			f, err := file.Open()
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to open file: " + err.Error()})
+				return
+			}
+			defer f.Close()
+			audioData, err = io.ReadAll(f)
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to read file: " + err.Error()})
+				return
+			}
+		} else {
+			if err := c.ShouldBind(&req); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request: " + err.Error()})
+				return
+			}
+			var decErr error
+			audioData, decErr = base64.StdEncoding.DecodeString(req.Audio)
+			if decErr != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid audio data: " + decErr.Error()})
+				return
+			}
+			fileSize = int64(len(audioData))
+		}
+	}
+
+	log.Printf("[Async] Processing audio file: size=%d bytes (%.2f MB)", fileSize, float64(fileSize)/(1024*1024))
+
+	converter := audio.NewAudioConverter()
+	samples, sampleRate, convertErr := converter.ConvertToSamples(audioData)
+	if convertErr != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Audio format conversion failed: " + convertErr.Error()})
+		return
+	}
+
+	if req.SampleRate == 0 {
+		req.SampleRate = sampleRate
+	}
+
+	enableDiar := diarizationMgr != nil && req.EnableDiarization
+	task := asr.NewASRTask(samples, req.SampleRate, diarizationMgr, enableDiar)
+
+	// 先存入任务存储，再提交到队列
+	taskQueue.StoreTask(task)
+
+	if err := taskQueue.Submit(task); err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Task queue full: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusAccepted, OfflineASRAsyncResponse{
+		TaskID: task.ID,
+		Status: "pending",
+	})
+}
+
+// HandleASRTaskQuery 查询异步任务状态和结果
+func HandleASRTaskQuery(c *gin.Context, taskQueue *asr.TaskQueue) {
+	taskID := c.Param("taskId")
+	if taskID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "task_id is required"})
+		return
+	}
+
+	task, ok := taskQueue.GetTask(taskID)
+	if !ok {
+		c.JSON(http.StatusNotFound, gin.H{"error": "task not found"})
+		return
+	}
+
+	resp := OfflineASRTaskResponse{
+		TaskID: task.ID,
+		Status: taskStatusString(task.GetStatus()),
+	}
+
+	if task.GetStatus() == asr.TaskStatusCompleted && task.Result != nil {
+		resp.Text = task.Result.Text
+		resp.Duration = task.Result.Duration
+		if len(task.Result.Segments) > 0 {
+			segs := make([]DiarizationSegment, len(task.Result.Segments))
+			for i, seg := range task.Result.Segments {
+				segs[i] = DiarizationSegment{
+					Start:   seg.Start,
+					End:     seg.End,
+					Speaker: seg.Speaker,
+					Text:    seg.Text,
+				}
+			}
+			resp.Segments = segs
+		}
+	} else if task.GetStatus() == asr.TaskStatusFailed {
+		if task.Error != nil {
+			resp.Error = task.Error.Error()
+		}
+	}
+
+	c.JSON(http.StatusOK, resp)
+}
+
 // bytesToFloat32 将字节数组转换为 float32 样本数组
 func bytesToFloat32(data []byte) []float32 {
 	if len(data)%2 != 0 {

@@ -43,6 +43,7 @@ offline_asr:
   max_file_size_mb: 1000   # 最大允许上传的文件大小（MB），支持超大文件
   chunk_duration_sec: 60   # 分块处理时长（秒），建议30-60秒以提高处理效率
   max_concurrency: 4       # 最大并发处理块数，增加到4以加快处理速度
+  max_processing_timeout_min: 120  # 最大处理超时时间（分钟），默认120分钟，适合处理超长音频
 
 # 说话者分离配置（Speaker Diarization）
 speaker_diarization:
@@ -86,10 +87,10 @@ punctuation:
 
 # 并发控制
 concurrency:
-  max_streaming_sessions: 100
-  max_offline_jobs: 50
-  worker_pool_size: 20
-  queue_size: 1000
+  max_streaming_sessions: 100      # 最大实时会话数
+  max_offline_jobs: 50              # 最大离线任务数（已废弃，由worker_pool_size控制）
+  worker_pool_size: 2               # 任务队列worker数量，控制并发处理的任务数（默认2，避免资源占用过高）
+  queue_size: 100                   # 任务队列大小，超过2分钟的音频将进入队列等待处理
 
 # 日志配置
 logging:

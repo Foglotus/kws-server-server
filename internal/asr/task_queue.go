@@ -128,6 +128,8 @@ type TaskQueue struct {
 	shutdown     chan struct{}
 	stats        taskQueueStats
 	mu           sync.RWMutex
+	taskStore    map[string]*ASRTask // taskId -> task 的内存存储
+	storeMu      sync.RWMutex
 }
 
 type taskQueueStats struct {
@@ -168,6 +170,7 @@ func NewTaskQueue(cfg *config.Config, asrManager *OfflineASRManager) *TaskQueue 
 		maxQueueSize: maxQueueSize,
 		workers:      make([]*worker, maxWorkers),
 		shutdown:     make(chan struct{}),
+		taskStore:    make(map[string]*ASRTask),
 	}
 
 	// 启动worker
@@ -181,8 +184,49 @@ func NewTaskQueue(cfg *config.Config, asrManager *OfflineASRManager) *TaskQueue 
 		go w.run()
 	}
 
+	// 启动任务清理协程（1小时后清理已完成/失败任务）
+	go tq.cleanupLoop()
+
 	log.Printf("TaskQueue initialized: max_workers=%d, queue_size=%d", maxWorkers, maxQueueSize)
 	return tq
+}
+
+// StoreTask 将任务保存到内存存储
+func (tq *TaskQueue) StoreTask(task *ASRTask) {
+	tq.storeMu.Lock()
+	defer tq.storeMu.Unlock()
+	tq.taskStore[task.ID] = task
+}
+
+// GetTask 根据 ID 从内存存储中查询任务
+func (tq *TaskQueue) GetTask(id string) (*ASRTask, bool) {
+	tq.storeMu.RLock()
+	defer tq.storeMu.RUnlock()
+	task, ok := tq.taskStore[id]
+	return task, ok
+}
+
+// cleanupLoop 定期清理超过1小时的已完成/失败任务
+func (tq *TaskQueue) cleanupLoop() {
+	ticker := time.NewTicker(10 * time.Minute)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-tq.shutdown:
+			return
+		case <-ticker.C:
+			tq.storeMu.Lock()
+			deadline := time.Now().Add(-1 * time.Hour)
+			for id, task := range tq.taskStore {
+				status := task.GetStatus()
+				if (status == TaskStatusCompleted || status == TaskStatusFailed) &&
+					task.CompleteTime.Before(deadline) {
+					delete(tq.taskStore, id)
+				}
+			}
+			tq.storeMu.Unlock()
+		}
+	}
 }
 
 // Submit 提交任务

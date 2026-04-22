@@ -112,15 +112,25 @@ func (s *Server) setupRoutes() {
 
 			// 离线语音识别
 			if s.config.OfflineASR.Enabled {
-				// 普通模式（不带说话者分离）
-				api.POST("/offline/asr", func(c *gin.Context) {
+				// 同步模式（兼容旧调用）
+				api.POST("/offline/asr/sync", func(c *gin.Context) {
 					handler.HandleOfflineASRWithQueue(c, s.offlineASR, nil, s.taskQueue)
+				})
+
+				// 异步模式：立即返回 taskId
+				api.POST("/offline/asr", func(c *gin.Context) {
+					handler.HandleOfflineASRAsync(c, s.offlineASR, nil, s.taskQueue)
+				})
+
+				// 查询异步任务状态/结果
+				api.GET("/offline/asr/task/:taskId", func(c *gin.Context) {
+					handler.HandleASRTaskQuery(c, s.taskQueue)
 				})
 
 				// 带说话者分离模式
 				if s.config.SpeakerDiarization.Enabled {
 					api.POST("/offline/asr/diarization", func(c *gin.Context) {
-						handler.HandleOfflineASRWithQueue(c, s.offlineASR, s.diarizationMgr, s.taskQueue)
+						handler.HandleOfflineASRAsync(c, s.offlineASR, s.diarizationMgr, s.taskQueue)
 					})
 				}
 			}
