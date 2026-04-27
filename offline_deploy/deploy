@@ -168,6 +168,7 @@ docker run -d \
     -v "$MODELS_DIR/vad:/models/vad:ro" \
     -v "$MODELS_DIR/punctuation:/models/punctuation:ro" \
     -v "$LOGS_DIR:/logs" \
+    -v "./bin/airecorder:/app/airecorder:ro" \
     -e TZ=Asia/Shanghai \
     "$IMAGE_NAME" 2>/dev/null || {
     log_error "容器启动失败"
