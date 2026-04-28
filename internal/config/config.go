@@ -8,6 +8,8 @@ import (
 
 type Config struct {
 	Server             ServerConfig             `yaml:"server"`
+	Admin              AdminConfig              `yaml:"admin"`
+	Signature          SignatureConfig          `yaml:"signature"`
 	StreamingASR       StreamingASRConfig       `yaml:"streaming_asr"`
 	OfflineASR         OfflineASRConfig         `yaml:"offline_asr"`
 	SpeakerDiarization SpeakerDiarizationConfig `yaml:"speaker_diarization"`
@@ -15,6 +17,16 @@ type Config struct {
 	Punctuation        PunctuationConfig        `yaml:"punctuation"`
 	Concurrency        ConcurrencyConfig        `yaml:"concurrency"`
 	Logging            LoggingConfig            `yaml:"logging"`
+}
+
+type AdminConfig struct {
+	Password string `yaml:"password"`
+}
+
+type SignatureConfig struct {
+	Enabled        bool   `yaml:"enabled"`
+	Secret         string `yaml:"secret"`
+	MaxSkewSeconds int64  `yaml:"max_skew_seconds"`
 }
 
 type ServerConfig struct {
@@ -120,8 +132,19 @@ func LoadConfig() (*Config, error) {
 	}
 
 	var config Config
+	// 默认启用签名校验，并允许 5 分钟时间偏差。
+	config.Signature.Enabled = true
+	config.Signature.MaxSkewSeconds = 300
 	if err := yaml.Unmarshal(data, &config); err != nil {
 		return nil, err
+	}
+
+	if config.Signature.Secret == "" {
+		config.Signature.Secret = os.Getenv("API_SIGNATURE_SECRET")
+	}
+
+	if config.Signature.MaxSkewSeconds <= 0 {
+		config.Signature.MaxSkewSeconds = 300
 	}
 
 	return &config, nil

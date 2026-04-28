@@ -1,0 +1,1080 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Recorder - 后台管理</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      min-height: 100vh;
+    }
+
+    /* ── Login overlay ── */
+    #loginOverlay {
+      position: fixed; inset: 0;
+      background: #0f172a;
+      display: flex; align-items: center; justify-content: center;
+      z-index: 999;
+    }
+    .login-card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 16px;
+      padding: 40px 48px;
+      width: 360px;
+      box-shadow: 0 20px 60px rgba(0,0,0,.5);
+    }
+    .login-card h2 { font-size: 1.5rem; margin-bottom: 8px; color: #f1f5f9; }
+    .login-card p  { color: #94a3b8; font-size: .9rem; margin-bottom: 28px; }
+    .login-card input {
+      width: 100%; padding: 10px 14px;
+      border: 1px solid #475569; border-radius: 8px;
+      background: #0f172a; color: #e2e8f0; font-size: 1rem;
+      margin-bottom: 16px; outline: none;
+    }
+    .login-card input:focus { border-color: #6366f1; }
+    .login-card .login-btn {
+      width: 100%; padding: 11px; border: none; border-radius: 8px;
+      background: #6366f1; color: white; font-size: 1rem; font-weight: 600;
+      cursor: pointer; transition: background .2s;
+    }
+    .login-card .login-btn:hover { background: #4f46e5; }
+    .login-error { color: #f87171; font-size: .875rem; margin-top: 10px; display: none; }
+
+    /* ── App shell ── */
+    #app { display: none; }
+    header {
+      background: #1e293b;
+      border-bottom: 1px solid #334155;
+      padding: 14px 24px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    header .brand { font-weight: 700; font-size: 1.2rem; color: #f1f5f9; }
+    header .brand span { color: #6366f1; }
+    header .logout-btn {
+      background: transparent; border: 1px solid #475569;
+      color: #94a3b8; padding: 6px 16px; border-radius: 6px;
+      cursor: pointer; font-size: .875rem; transition: all .2s;
+    }
+    header .logout-btn:hover { border-color: #f87171; color: #f87171; }
+
+    main { margin: 0 auto; padding: 24px 20px; }
+
+    /* ── Stat cards ── */
+    .stat-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 16px; margin-bottom: 28px;
+    }
+    .stat-card {
+      background: #1e293b; border: 1px solid #334155;
+      border-radius: 12px; padding: 20px 22px;
+    }
+    .stat-card .label { font-size: .8rem; color: #64748b; text-transform: uppercase; letter-spacing: .05em; }
+    .stat-card .value { font-size: 2rem; font-weight: 700; color: #f1f5f9; margin-top: 4px; }
+    .stat-card .sub   { font-size: .8rem; color: #94a3b8; margin-top: 2px; }
+
+    /* ── Section panels ── */
+    .panel {
+      background: #1e293b; border: 1px solid #334155;
+      border-radius: 12px; margin-bottom: 24px; overflow: hidden;
+    }
+    .panel-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid #334155;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .panel-header h3 { font-size: 1rem; font-weight: 600; color: #f1f5f9; }
+    .panel-header .refresh-btn {
+      background: transparent; border: 1px solid #475569;
+      color: #94a3b8; padding: 4px 12px; border-radius: 6px;
+      cursor: pointer; font-size: .8rem; transition: all .2s;
+    }
+    .panel-header .refresh-btn:hover { border-color: #6366f1; color: #6366f1; }
+
+    /* ── Table ── */
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: .875rem; }
+    thead th {
+      padding: 10px 16px; text-align: left;
+      color: #64748b; font-weight: 600; font-size: .75rem; text-transform: uppercase;
+      border-bottom: 1px solid #334155; white-space: nowrap;
+    }
+    tbody tr { border-bottom: 1px solid #1e293b; }
+    tbody tr:hover { background: #0f172a; }
+    tbody td { padding: 10px 16px; color: #cbd5e1; white-space: nowrap; }
+    .empty-row td { text-align: center; color: #475569; padding: 24px; }
+
+    /* ── Badges ── */
+    .badge {
+      display: inline-block; padding: 2px 10px;
+      border-radius: 999px; font-size: .75rem; font-weight: 600;
+    }
+    .badge-pending    { background: #1e3a5f; color: #60a5fa; }
+    .badge-processing { background: #14532d; color: #4ade80; }
+    .badge-completed  { background: #1a1a2e; color: #94a3b8; }
+    .badge-failed     { background: #450a0a; color: #f87171; }
+    .badge-active     { background: #14532d; color: #4ade80; }
+
+    /* ── Action buttons ── */
+    .action-btn {
+      padding: 4px 12px; border-radius: 6px; border: none;
+      cursor: pointer; font-size: .8rem; font-weight: 600; transition: all .2s;
+    }
+    .action-btn.danger {
+      background: #450a0a; color: #f87171; border: 1px solid #7f1d1d;
+    }
+    .action-btn.danger:hover { background: #7f1d1d; color: white; }
+    .action-btn.danger:disabled { opacity: .4; cursor: default; }
+
+    /* ── Progress bar ── */
+    .progress-wrap { width: 120px; background: #0f172a; border-radius: 4px; height: 8px; overflow: hidden; }
+    .progress-bar  { height: 100%; background: #6366f1; border-radius: 4px; transition: width .4s; }
+
+    /* ── Workers ── */
+    .worker-grid { display: flex; flex-wrap: wrap; gap: 12px; padding: 16px 20px; }
+    .worker-card {
+      background: #0f172a; border: 1px solid #334155;
+      border-radius: 8px; padding: 12px 16px; min-width: 160px;
+    }
+    .worker-card .w-id   { font-size: .75rem; color: #64748b; }
+    .worker-card .w-task { font-size: .8rem; color: #94a3b8; margin-top: 4px; word-break: break-all; }
+    .worker-busy   { border-color: #4ade80; }
+    .worker-idle   { border-color: #334155; }
+
+    /* ── Auto-refresh toggle ── */
+    .auto-refresh { display: flex; align-items: center; gap: 8px; font-size: .85rem; color: #94a3b8; }
+    .auto-refresh input { accent-color: #6366f1; }
+
+    /* ── Capability test panel ── */
+    .cap-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+      gap: 16px;
+      padding: 16px 20px 20px;
+    }
+    .cap-card {
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 10px;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      min-height: 250px;
+    }
+    .cap-card h4 {
+      color: #f1f5f9;
+      font-size: .95rem;
+      font-weight: 600;
+    }
+    .cap-inline {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      font-size: .85rem;
+      color: #94a3b8;
+    }
+    .cap-inline label {
+      color: #94a3b8;
+    }
+    .cap-inline input {
+      background: #020617;
+      border: 1px solid #334155;
+      color: #e2e8f0;
+      border-radius: 6px;
+      padding: 4px 8px;
+      min-width: 110px;
+    }
+    .cap-status {
+      display: inline-block;
+      border-radius: 999px;
+      font-size: .75rem;
+      padding: 2px 10px;
+      border: 1px solid;
+    }
+    .cap-status-on {
+      color: #4ade80;
+      border-color: #166534;
+      background: #052e16;
+    }
+    .cap-status-off {
+      color: #94a3b8;
+      border-color: #334155;
+      background: #0b1220;
+    }
+    .cap-btn-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .cap-btn {
+      border: 1px solid #334155;
+      background: #1e293b;
+      color: #e2e8f0;
+      border-radius: 6px;
+      padding: 6px 12px;
+      cursor: pointer;
+      font-size: .82rem;
+      font-weight: 600;
+      transition: all .2s;
+    }
+    .cap-btn:hover {
+      border-color: #6366f1;
+      color: #c7d2fe;
+    }
+    .cap-btn.primary {
+      background: #3730a3;
+      border-color: #4338ca;
+      color: #eef2ff;
+    }
+    .cap-btn.danger {
+      background: #450a0a;
+      border-color: #7f1d1d;
+      color: #fecaca;
+    }
+    .cap-btn:disabled {
+      opacity: .45;
+      cursor: default;
+    }
+    .cap-file-info {
+      color: #94a3b8;
+      font-size: .8rem;
+      min-height: 18px;
+    }
+    .cap-result {
+      background: #020617;
+      border: 1px solid #1e293b;
+      border-radius: 8px;
+      padding: 10px;
+      min-height: 120px;
+      max-height: 280px;
+      overflow-y: auto;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-size: .8rem;
+      white-space: pre-wrap;
+      word-break: break-word;
+      line-height: 1.5;
+      color: #cbd5e1;
+    }
+    .cap-empty {
+      color: #64748b;
+      font-style: italic;
+    }
+    .cap-log {
+      border-left: 3px solid #475569;
+      padding-left: 8px;
+      margin-bottom: 8px;
+      color: #cbd5e1;
+    }
+    .cap-log.partial { border-left-color: #60a5fa; color: #93c5fd; }
+    .cap-log.result { border-left-color: #4ade80; color: #86efac; }
+    .cap-log.error { border-left-color: #f87171; color: #fca5a5; }
+
+    /* ── Toast ── */
+    #toast {
+      position: fixed; bottom: 24px; right: 24px;
+      background: #1e293b; border: 1px solid #334155;
+      border-radius: 8px; padding: 12px 20px;
+      font-size: .875rem; color: #e2e8f0;
+      box-shadow: 0 8px 24px rgba(0,0,0,.4);
+      opacity: 0; transform: translateY(8px);
+      transition: all .3s; pointer-events: none;
+    }
+    #toast.show { opacity: 1; transform: translateY(0); }
+
+    @media (max-width: 768px) {
+      main { padding: 16px 12px; }
+      .cap-grid { grid-template-columns: 1fr; padding: 12px; }
+      .cap-btn { width: 100%; }
+      .panel-header { padding: 14px 12px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Login -->
+<div id="loginOverlay">
+  <div class="login-card">
+    <h2>后台管理登录</h2>
+    <p>AI Recorder 管理控制台</p>
+    <input type="password" id="passwordInput" placeholder="请输入管理密码" />
+    <button class="login-btn" onclick="doLogin()">登 录</button>
+    <div class="login-error" id="loginError">密码错误，请重试</div>
+  </div>
+</div>
+
+<!-- App -->
+<div id="app">
+  <header>
+    <div class="brand">AI Recorder <span>管理控制台</span></div>
+    <div style="display:flex;gap:16px;align-items:center">
+      <label class="auto-refresh">
+        <input type="checkbox" id="autoRefreshCheck" checked onchange="toggleAutoRefresh()" />
+        自动刷新 (10s)
+      </label>
+      <button class="logout-btn" onclick="doLogout()">退出登录</button>
+    </div>
+  </header>
+
+  <main>
+    <!-- Stats -->
+    <div class="stat-grid" id="statGrid">
+      <div class="stat-card"><div class="label">活跃流式会话</div><div class="value" id="sActiveSessions">—</div></div>
+      <div class="stat-card"><div class="label">总流式会话</div><div class="value" id="sTotalSessions">—</div></div>
+      <div class="stat-card"><div class="label">队列任务数</div><div class="value" id="sQueueLen">—</div></div>
+      <div class="stat-card"><div class="label">处理中任务</div><div class="value" id="sProcessing">—</div></div>
+      <div class="stat-card"><div class="label">已完成任务</div><div class="value" id="sCompleted">—</div></div>
+      <div class="stat-card"><div class="label">失败任务</div><div class="value" id="sFailed">—</div></div>
+      <div class="stat-card"><div class="label">平均等待时间</div><div class="value" id="sAvgWait">—</div><div class="sub">毫秒</div></div>
+      <div class="stat-card"><div class="label">平均执行时间</div><div class="value" id="sAvgExec">—</div><div class="sub">毫秒</div></div>
+    </div>
+
+    <!-- Workers -->
+    <div class="panel">
+      <div class="panel-header">
+        <h3>Worker 状态</h3>
+        <button class="refresh-btn" onclick="loadWorkers()">刷新</button>
+      </div>
+      <div class="worker-grid" id="workerGrid"><span style="color:#475569;font-size:.875rem">加载中...</span></div>
+    </div>
+
+    <!-- Streaming sessions -->
+    <div class="panel">
+      <div class="panel-header">
+        <h3>活跃流式 ASR 会话</h3>
+        <button class="refresh-btn" onclick="loadSessions()">刷新</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>会话 ID</th><th>状态</th><th>操作</th></tr></thead>
+          <tbody id="sessionsTbody"><tr class="empty-row"><td colspan="3">加载中...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Offline tasks -->
+    <div class="panel">
+      <div class="panel-header">
+        <h3>离线 ASR 任务</h3>
+        <button class="refresh-btn" onclick="loadTasks()">刷新</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>任务 ID</th>
+              <th>状态</th>
+              <th>进度</th>
+              <th>音频时长(s)</th>
+              <th>说话者分离</th>
+              <th>提交时间</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="tasksTbody"><tr class="empty-row"><td colspan="7">加载中...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Capability tests (auth protected) -->
+    <div class="panel">
+      <div class="panel-header">
+        <h3>能力测试（鉴权）</h3>
+      </div>
+      <div class="cap-grid">
+        <div class="cap-card">
+          <h4>实时语音识别 (WebSocket)</h4>
+          <div class="cap-inline">
+            <label for="capSampleRate">采样率</label>
+            <input id="capSampleRate" type="number" value="16000" min="8000" max="48000" step="1000" />
+            <span id="capWsStatus" class="cap-status cap-status-off">未连接</span>
+          </div>
+          <div class="cap-btn-row">
+            <button id="capStartStreamBtn" class="cap-btn primary" onclick="startCapabilityRecording()">开始录音</button>
+            <button id="capStopStreamBtn" class="cap-btn danger" onclick="stopCapabilityRecording()" disabled>停止录音</button>
+            <button class="cap-btn" onclick="clearCapabilityStreamResult()">清空结果</button>
+          </div>
+          <div id="capStreamingResult" class="cap-result"><div class="cap-empty">点击"开始录音"进行实时识别（需浏览器麦克风权限）...</div></div>
+        </div>
+
+        <div class="cap-card">
+          <h4>离线语音识别</h4>
+          <div class="cap-btn-row">
+            <button class="cap-btn" onclick="document.getElementById('capAudioFile').click()">选择音频文件</button>
+            <input id="capAudioFile" type="file" accept="audio/*" onchange="handleCapabilityFileSelect(event)" style="display:none" />
+            <button id="capUploadBtn" class="cap-btn primary" onclick="uploadCapabilityAudioFile()" disabled>上传并识别</button>
+            <button class="cap-btn" onclick="clearCapabilityOfflineResult()">清空结果</button>
+          </div>
+          <div id="capFileInfo" class="cap-file-info"></div>
+          <div id="capOfflineResult" class="cap-result"><div class="cap-empty">选择音频文件并上传以进行离线识别...</div></div>
+        </div>
+
+        <div class="cap-card">
+          <h4>说话者分离识别</h4>
+          <div class="cap-btn-row">
+            <button class="cap-btn" onclick="document.getElementById('capDiarizationFile').click()">选择音频文件</button>
+            <input id="capDiarizationFile" type="file" accept="audio/*" onchange="handleCapabilityDiarizationFileSelect(event)" style="display:none" />
+            <button id="capDiarizationBtn" class="cap-btn primary" onclick="uploadCapabilityDiarizationFile()" disabled>上传并分析</button>
+            <button class="cap-btn" onclick="clearCapabilityDiarizationResult()">清空结果</button>
+          </div>
+          <div id="capDiarizationFileInfo" class="cap-file-info"></div>
+          <div id="capDiarizationResult" class="cap-result"><div class="cap-empty">选择音频文件进行说话者分离识别...</div></div>
+        </div>
+
+        <div class="cap-card">
+          <h4>鉴权 API 测试</h4>
+          <div class="cap-btn-row">
+            <button class="cap-btn" onclick="testAdminHealthAPI()">测试健康检查</button>
+            <button class="cap-btn" onclick="testAdminInfoAPI()">获取服务信息</button>
+            <button class="cap-btn" onclick="testAdminStatsAPI()">获取能力统计</button>
+          </div>
+          <div id="capApiResult" class="cap-result"><div class="cap-empty">点击按钮测试 admin 鉴权接口...</div></div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div id="toast"></div>
+
+<script>
+  // ── base URL ──────────────────────────────────────────────────────────────
+  const proto = location.protocol;
+  const wsProto = proto === 'https:' ? 'wss:' : 'ws:';
+  const BASE = `${proto}//${location.host}/realkws/admin`;
+  const ADMIN_API = `${BASE}/api`;
+  const ADMIN_STREAM_WS = `${wsProto}//${location.host}/realkws/admin/api/capability/streaming/asr`;
+  let token = localStorage.getItem('admin_token') || '';
+  let autoRefreshTimer = null;
+
+  // capability testing state
+  let capWebsocket = null;
+  let capAudioContext = null;
+  let capMediaRecorder = null;
+  let capSelectedFile = null;
+  let capSelectedDiarizationFile = null;
+
+  // ── Init ─────────────────────────────────────────────────────────────────
+  window.onload = () => {
+    document.getElementById('passwordInput').addEventListener('keydown', e => {
+      if (e.key === 'Enter') doLogin();
+    });
+    if (token) {
+      verifyToken().then(ok => {
+        if (ok) showApp();
+      });
+    }
+  };
+
+  async function verifyToken() {
+    try {
+      const r = await authFetch(`${ADMIN_API}/stats`);
+      return r.ok;
+    } catch { return false; }
+  }
+
+  // ── Login / Logout ────────────────────────────────────────────────────────
+  async function doLogin() {
+    const password = document.getElementById('passwordInput').value;
+    const errEl = document.getElementById('loginError');
+    errEl.style.display = 'none';
+    try {
+      const r = await fetch(`${BASE}/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password })
+      });
+      if (!r.ok) { errEl.style.display = 'block'; return; }
+      const data = await r.json();
+      token = data.token;
+      localStorage.setItem('admin_token', token);
+      showApp();
+    } catch {
+      errEl.style.display = 'block';
+    }
+  }
+
+  function doLogout() {
+    stopCapabilityRecording(true);
+    token = '';
+    localStorage.removeItem('admin_token');
+    stopAutoRefresh();
+    document.getElementById('app').style.display = 'none';
+    document.getElementById('loginOverlay').style.display = 'flex';
+    document.getElementById('passwordInput').value = '';
+  }
+
+  function showApp() {
+    document.getElementById('loginOverlay').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    refreshAll();
+    startAutoRefresh();
+  }
+
+  // ── Auth fetch ────────────────────────────────────────────────────────────
+  async function authFetch(url, opts = {}) {
+    opts.headers = { ...(opts.headers || {}), 'Authorization': `Bearer ${token}` };
+    return fetch(url, opts);
+  }
+
+  // ── Auto-refresh ──────────────────────────────────────────────────────────
+  function startAutoRefresh() {
+    stopAutoRefresh();
+    if (document.getElementById('autoRefreshCheck').checked) {
+      autoRefreshTimer = setInterval(refreshAll, 10000);
+    }
+  }
+  function stopAutoRefresh() {
+    if (autoRefreshTimer) { clearInterval(autoRefreshTimer); autoRefreshTimer = null; }
+  }
+  function toggleAutoRefresh() {
+    if (document.getElementById('autoRefreshCheck').checked) startAutoRefresh();
+    else stopAutoRefresh();
+  }
+
+  function refreshAll() {
+    loadStats();
+    loadWorkers();
+    loadSessions();
+    loadTasks();
+  }
+
+  // ── Stats ────────────────────────────────────────────────────────────────
+  async function loadStats() {
+    try {
+      const r = await authFetch(`${ADMIN_API}/stats`);
+      if (!r.ok) return;
+      const d = await r.json();
+      const s = d.streaming || {};
+      const q = d.task_queue || {};
+      setText('sActiveSessions', s.active_sessions ?? '—');
+      setText('sTotalSessions',  s.total_sessions  ?? '—');
+      setText('sQueueLen',       q.queue_length    ?? '—');
+      setText('sProcessing',     q.processing_tasks ?? '—');
+      setText('sCompleted',      q.completed_tasks  ?? '—');
+      setText('sFailed',         q.failed_tasks     ?? '—');
+      setText('sAvgWait',        q.avg_wait_time_ms ?? '—');
+      setText('sAvgExec',        q.avg_exec_time_ms ?? '—');
+    } catch(e) { console.error(e); }
+  }
+
+  // ── Workers ───────────────────────────────────────────────────────────────
+  async function loadWorkers() {
+    try {
+      const r = await authFetch(`${ADMIN_API}/workers`);
+      if (!r.ok) return;
+      const d = await r.json();
+      const workers = d.workers || [];
+      const grid = document.getElementById('workerGrid');
+      if (!workers.length) {
+        grid.innerHTML = '<span style="color:#475569;font-size:.875rem">暂无 Worker</span>';
+        return;
+      }
+      grid.innerHTML = workers.map(w => `
+        <div class="worker-card ${w.processing ? 'worker-busy' : 'worker-idle'}">
+          <div class="w-id">Worker #${w.id}</div>
+          <div class="w-task">${w.processing
+            ? `<span style="color:#4ade80">处理中</span><br/><span style="font-size:.72rem;color:#64748b">${w.current_task || ''}</span>`
+            : '<span style="color:#475569">空闲</span>'
+          }</div>
+        </div>
+      `).join('');
+    } catch(e) { console.error(e); }
+  }
+
+  // ── Sessions ──────────────────────────────────────────────────────────────
+  async function loadSessions() {
+    try {
+      const r = await authFetch(`${ADMIN_API}/sessions`);
+      if (!r.ok) return;
+      const d = await r.json();
+      const sessions = d.sessions || [];
+      const tbody = document.getElementById('sessionsTbody');
+      if (!sessions.length) {
+        tbody.innerHTML = '<tr class="empty-row"><td colspan="3">暂无活跃会话</td></tr>';
+        return;
+      }
+      tbody.innerHTML = sessions.map(s => `
+        <tr>
+          <td><code style="font-size:.8rem;color:#a5b4fc">${s.id}</code></td>
+          <td><span class="badge badge-active">活跃</span></td>
+          <td>
+            <button class="action-btn danger" onclick="closeSession('${s.id}', this)">关闭</button>
+          </td>
+        </tr>
+      `).join('');
+    } catch(e) { console.error(e); }
+  }
+
+  async function closeSession(sessionId, btn) {
+    if (!confirm(`确认关闭会话 ${sessionId.slice(0, 8)}...？`)) return;
+    btn.disabled = true;
+    try {
+      const r = await authFetch(`${ADMIN_API}/sessions/${sessionId}/close`, { method: 'POST' });
+      const d = await r.json();
+      showToast(r.ok ? '会话已关闭' : (d.error || '操作失败'));
+      if (r.ok) loadSessions();
+    } catch { showToast('请求失败'); btn.disabled = false; }
+  }
+
+  // ── Tasks ─────────────────────────────────────────────────────────────────
+  async function loadTasks() {
+    try {
+      const r = await authFetch(`${ADMIN_API}/tasks`);
+      if (!r.ok) return;
+      const d = await r.json();
+      const tasks = (d.tasks || []).sort((a, b) =>
+        new Date(b.submit_time) - new Date(a.submit_time)
+      );
+      const tbody = document.getElementById('tasksTbody');
+      if (!tasks.length) {
+        tbody.innerHTML = '<tr class="empty-row"><td colspan="7">暂无任务记录</td></tr>';
+        return;
+      }
+      tbody.innerHTML = tasks.map(t => {
+        const progress = typeof t.progress === 'number' ? t.progress.toFixed(0) : 0;
+        const canCancel = t.status === 'pending' || t.status === 'processing';
+        const submitTime = t.submit_time ? new Date(t.submit_time).toLocaleString('zh-CN') : '—';
+        const dur = typeof t.audio_duration_sec === 'number' ? t.audio_duration_sec.toFixed(1) : '—';
+        return `
+          <tr>
+            <td><code style="font-size:.78rem;color:#a5b4fc">${t.id}</code></td>
+            <td><span class="badge badge-${t.status}">${statusLabel(t.status)}</span></td>
+            <td>
+              <div style="display:flex;align-items:center;gap:8px">
+                <div class="progress-wrap"><div class="progress-bar" style="width:${progress}%"></div></div>
+                <span style="font-size:.8rem;color:#64748b">${progress}%</span>
+              </div>
+            </td>
+            <td>${dur}</td>
+            <td>${t.enable_diarization ? '<span style="color:#a78bfa">是</span>' : '否'}</td>
+            <td>${submitTime}</td>
+            <td>
+              <button class="action-btn danger" ${canCancel ? '' : 'disabled'}
+                onclick="cancelTask('${t.id}', this)">取消</button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    } catch(e) { console.error(e); }
+  }
+
+  async function cancelTask(taskId, btn) {
+    if (!confirm(`确认取消任务 ${taskId}？`)) return;
+    btn.disabled = true;
+    try {
+      const r = await authFetch(`${ADMIN_API}/tasks/${taskId}/cancel`, { method: 'POST' });
+      const d = await r.json();
+      showToast(r.ok ? '任务已取消' : (d.error || '操作失败'));
+      if (r.ok) loadTasks();
+    } catch { showToast('请求失败'); btn.disabled = false; }
+  }
+
+  // ── Capability tests (auth protected) ─────────────────────────────────────
+  function setCapabilityWSStatus(text, connected) {
+    const el = document.getElementById('capWsStatus');
+    el.textContent = text;
+    el.className = `cap-status ${connected ? 'cap-status-on' : 'cap-status-off'}`;
+  }
+
+  function appendCapabilityStreamResult(text, type = 'info') {
+    const box = document.getElementById('capStreamingResult');
+    if (box.querySelector('.cap-empty')) {
+      box.innerHTML = '';
+    }
+
+    const row = document.createElement('div');
+    row.className = `cap-log ${type === 'partial' || type === 'result' || type === 'error' ? type : ''}`;
+    row.textContent = `[${new Date().toLocaleTimeString()}] ${text}`;
+    box.appendChild(row);
+    box.scrollTop = box.scrollHeight;
+  }
+
+  function clearCapabilityStreamResult() {
+    document.getElementById('capStreamingResult').innerHTML = '<div class="cap-empty">点击"开始录音"进行实时识别（需浏览器麦克风权限）...</div>';
+  }
+
+  function convertFloat32ToInt16(buffer) {
+    const length = buffer.length;
+    const pcm = new Int16Array(length);
+    for (let i = 0; i < length; i++) {
+      pcm[i] = Math.min(1, buffer[i]) * 0x7FFF;
+    }
+    return pcm;
+  }
+
+  function handleCapabilityWebSocketMessage(data) {
+    if (data.type === 'partial') {
+      appendCapabilityStreamResult(`[部分结果] ${data.text}`, 'partial');
+    } else if (data.type === 'result') {
+      appendCapabilityStreamResult(`[最终结果] ${data.text}`, 'result');
+    } else if (data.type === 'error') {
+      appendCapabilityStreamResult(`[错误] ${data.error}`, 'error');
+    }
+  }
+
+  async function startCapabilityRecording() {
+    const sampleRate = parseInt(document.getElementById('capSampleRate').value, 10) || 16000;
+    const startBtn = document.getElementById('capStartStreamBtn');
+    const stopBtn = document.getElementById('capStopStreamBtn');
+
+    try {
+      capWebsocket = new WebSocket(`${ADMIN_STREAM_WS}?token=${encodeURIComponent(token)}`);
+
+      capWebsocket.onopen = () => {
+        setCapabilityWSStatus('已连接', true);
+        appendCapabilityStreamResult('WebSocket 连接成功');
+      };
+
+      capWebsocket.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        handleCapabilityWebSocketMessage(data);
+      };
+
+      capWebsocket.onerror = () => {
+        setCapabilityWSStatus('错误', false);
+        appendCapabilityStreamResult('WebSocket 连接错误', 'error');
+      };
+
+      capWebsocket.onclose = () => {
+        setCapabilityWSStatus('已断开', false);
+        appendCapabilityStreamResult('WebSocket 连接已关闭');
+      };
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          sampleRate,
+          channelCount: 1,
+          echoCancellation: true,
+          noiseSuppression: true
+        }
+      });
+
+      capAudioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate });
+      const source = capAudioContext.createMediaStreamSource(stream);
+      const processor = capAudioContext.createScriptProcessor(4096, 1, 1);
+
+      processor.onaudioprocess = (e) => {
+        if (capWebsocket && capWebsocket.readyState === WebSocket.OPEN) {
+          const audioData = e.inputBuffer.getChannelData(0);
+          const pcmData = convertFloat32ToInt16(audioData);
+          const base64Audio = btoa(String.fromCharCode.apply(null, new Uint8Array(pcmData.buffer)));
+
+          capWebsocket.send(JSON.stringify({
+            type: 'audio',
+            audio: base64Audio,
+            sample_rate: sampleRate
+          }));
+        }
+      };
+
+      source.connect(processor);
+      processor.connect(capAudioContext.destination);
+      capMediaRecorder = { stream, source, processor };
+
+      startBtn.disabled = true;
+      stopBtn.disabled = false;
+      appendCapabilityStreamResult('开始录音...');
+    } catch (error) {
+      appendCapabilityStreamResult(`无法开始录音: ${error.message}`, 'error');
+      stopCapabilityRecording(true);
+    }
+  }
+
+  function stopCapabilityRecording(silent = false) {
+    if (capMediaRecorder) {
+      capMediaRecorder.stream.getTracks().forEach(track => track.stop());
+      capMediaRecorder.processor.disconnect();
+      capMediaRecorder.source.disconnect();
+      capMediaRecorder = null;
+    }
+
+    if (capAudioContext) {
+      capAudioContext.close();
+      capAudioContext = null;
+    }
+
+    if (capWebsocket) {
+      capWebsocket.onclose = null;
+      capWebsocket.close();
+      capWebsocket = null;
+    }
+
+    document.getElementById('capStartStreamBtn').disabled = false;
+    document.getElementById('capStopStreamBtn').disabled = true;
+    setCapabilityWSStatus('未连接', false);
+
+    if (!silent) {
+      appendCapabilityStreamResult('录音已停止');
+    }
+  }
+
+  function handleCapabilityFileSelect(event) {
+    capSelectedFile = event.target.files[0];
+    if (capSelectedFile) {
+      document.getElementById('capFileInfo').textContent = `已选择: ${capSelectedFile.name} (${(capSelectedFile.size / 1024).toFixed(2)} KB)`;
+      document.getElementById('capUploadBtn').disabled = false;
+    }
+  }
+
+  function clearCapabilityOfflineResult() {
+    document.getElementById('capOfflineResult').innerHTML = '<div class="cap-empty">选择音频文件并上传以进行离线识别...</div>';
+    document.getElementById('capFileInfo').textContent = '';
+    document.getElementById('capAudioFile').value = '';
+    capSelectedFile = null;
+    document.getElementById('capUploadBtn').disabled = true;
+  }
+
+  function handleCapabilityDiarizationFileSelect(event) {
+    capSelectedDiarizationFile = event.target.files[0];
+    if (capSelectedDiarizationFile) {
+      document.getElementById('capDiarizationFileInfo').textContent = `已选择: ${capSelectedDiarizationFile.name} (${(capSelectedDiarizationFile.size / 1024).toFixed(2)} KB)`;
+      document.getElementById('capDiarizationBtn').disabled = false;
+    }
+  }
+
+  function clearCapabilityDiarizationResult() {
+    document.getElementById('capDiarizationResult').innerHTML = '<div class="cap-empty">选择音频文件进行说话者分离识别...</div>';
+    document.getElementById('capDiarizationFileInfo').textContent = '';
+    document.getElementById('capDiarizationFile').value = '';
+    capSelectedDiarizationFile = null;
+    document.getElementById('capDiarizationBtn').disabled = true;
+  }
+
+  function formatTaskProgress(status, progress) {
+    const hasProgress = typeof progress === 'number' && !Number.isNaN(progress);
+    const progressText = hasProgress ? `，进度: ${progress.toFixed(1)}%` : '';
+    return `状态: ${status}${progressText}`;
+  }
+
+  async function submitCapabilityASRTask(path, formData) {
+    const response = await authFetch(`${ADMIN_API}${path}`, {
+      method: 'POST',
+      body: formData
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || '任务提交失败');
+    }
+
+    if (!data.task_id) {
+      throw new Error('任务提交成功但未返回 task_id');
+    }
+
+    return data.task_id;
+  }
+
+  async function waitCapabilityASRTask(taskId, onProgress, maxRetries = 300, intervalMs = 1000) {
+    for (let i = 0; i < maxRetries; i++) {
+      const response = await authFetch(`${ADMIN_API}/capability/offline/asr/task/${taskId}`);
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || '任务查询失败');
+      }
+
+      if (data.status === 'completed') {
+        return data;
+      }
+
+      if (data.status === 'failed') {
+        throw new Error(data.error || '识别任务失败');
+      }
+
+      if (typeof onProgress === 'function') {
+        onProgress(data.status || 'pending', data.progress);
+      }
+
+      await new Promise(resolve => setTimeout(resolve, intervalMs));
+    }
+
+    throw new Error('任务处理超时，请稍后重试');
+  }
+
+  function escapeHtml(str) {
+    return String(str || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function renderCapabilityOfflineResult(resultBox, data) {
+    const duration = typeof data.duration === 'number'
+      ? `<div style="margin-top: 10px; color: #94a3b8;">音频时长: ${data.duration.toFixed(2)} 秒</div>`
+      : '';
+
+    resultBox.innerHTML = `
+      <div><strong>识别结果:</strong></div>
+      <div style="margin-top: 8px; color: #e2e8f0;">${escapeHtml(data.text || '(无结果)')}</div>
+      ${duration}
+    `;
+  }
+
+  function renderCapabilityDiarizationResult(resultBox, data) {
+    let html = '<div><strong>说话者分离结果:</strong></div>';
+
+    if (typeof data.duration === 'number') {
+      html += `<div style="margin-top: 6px; color: #94a3b8;">总时长: ${data.duration.toFixed(2)}s</div>`;
+    }
+
+    if (data.segments && data.segments.length > 0) {
+      const segmentsHtml = data.segments.map((segment) => {
+        const start = typeof segment.start === 'number' ? segment.start.toFixed(1) : '0.0';
+        const end = typeof segment.end === 'number' ? segment.end.toFixed(1) : '0.0';
+        return `[${start}s-${end}s] 说话者 ${escapeHtml(segment.speaker)}: ${escapeHtml(segment.text || '')}`;
+      }).join('\n');
+
+      html += `<div style="margin-top: 8px; color: #cbd5e1; white-space: pre-wrap;">${segmentsHtml}</div>`;
+    } else {
+      html += '<div style="margin-top: 8px; color: #94a3b8;">(无分段结果)</div>';
+    }
+
+    resultBox.innerHTML = html;
+  }
+
+  async function uploadCapabilityAudioFile() {
+    if (!capSelectedFile) {
+      showToast('请先选择音频文件');
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('audio_file', capSelectedFile);
+
+    const resultBox = document.getElementById('capOfflineResult');
+    resultBox.innerHTML = '<div class="cap-empty">提交任务中，请稍候...</div>';
+    document.getElementById('capUploadBtn').disabled = true;
+
+    try {
+      const taskId = await submitCapabilityASRTask('/capability/offline/asr', formData);
+
+      const taskResult = await waitCapabilityASRTask(taskId, (status, progress) => {
+        resultBox.innerHTML = `
+          <div class="cap-empty">
+            任务处理中，请稍候...\n任务ID: ${escapeHtml(taskId)}\n${escapeHtml(formatTaskProgress(status, progress))}
+          </div>
+        `;
+      });
+
+      renderCapabilityOfflineResult(resultBox, taskResult);
+    } catch (error) {
+      resultBox.innerHTML = `<div class="cap-log error">请求失败: ${escapeHtml(error.message)}</div>`;
+    } finally {
+      document.getElementById('capUploadBtn').disabled = false;
+    }
+  }
+
+  async function uploadCapabilityDiarizationFile() {
+    if (!capSelectedDiarizationFile) {
+      showToast('请先选择音频文件');
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('audio_file', capSelectedDiarizationFile);
+    formData.append('enable_diarization', 'true');
+
+    const resultBox = document.getElementById('capDiarizationResult');
+    resultBox.innerHTML = '<div class="cap-empty">提交任务中，请稍候（这可能需要一些时间）...</div>';
+    document.getElementById('capDiarizationBtn').disabled = true;
+
+    try {
+      const taskId = await submitCapabilityASRTask('/capability/offline/asr/diarization', formData);
+
+      const taskResult = await waitCapabilityASRTask(taskId, (status, progress) => {
+        resultBox.innerHTML = `
+          <div class="cap-empty">
+            任务处理中，请稍候（这可能需要一些时间）...\n任务ID: ${escapeHtml(taskId)}\n${escapeHtml(formatTaskProgress(status, progress))}
+          </div>
+        `;
+      });
+
+      renderCapabilityDiarizationResult(resultBox, taskResult);
+    } catch (error) {
+      resultBox.innerHTML = `<div class="cap-log error">请求失败: ${escapeHtml(error.message)}</div>`;
+    } finally {
+      document.getElementById('capDiarizationBtn').disabled = false;
+    }
+  }
+
+  function renderCapabilityAPIResult(data) {
+    const box = document.getElementById('capApiResult');
+    box.innerHTML = `<pre style="margin:0;white-space:pre-wrap;word-break:break-word;color:#cbd5e1;">${escapeHtml(JSON.stringify(data, null, 2))}</pre>`;
+  }
+
+  async function testAdminHealthAPI() {
+    const box = document.getElementById('capApiResult');
+    box.innerHTML = '<div class="cap-empty">请求中...</div>';
+
+    try {
+      const response = await authFetch(`${ADMIN_API}/health`);
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || '请求失败');
+      }
+      renderCapabilityAPIResult(data);
+    } catch (error) {
+      box.innerHTML = `<div class="cap-log error">请求失败: ${escapeHtml(error.message)}</div>`;
+    }
+  }
+
+  async function testAdminInfoAPI() {
+    const box = document.getElementById('capApiResult');
+    box.innerHTML = '<div class="cap-empty">请求中...</div>';
+
+    try {
+      const response = await authFetch(`${ADMIN_API}/info`);
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || '请求失败');
+      }
+      renderCapabilityAPIResult(data);
+    } catch (error) {
+      box.innerHTML = `<div class="cap-log error">请求失败: ${escapeHtml(error.message)}</div>`;
+    }
+  }
+
+  async function testAdminStatsAPI() {
+    const box = document.getElementById('capApiResult');
+    box.innerHTML = '<div class="cap-empty">请求中...</div>';
+
+    try {
+      const response = await authFetch(`${ADMIN_API}/capability/stats`);
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || '请求失败');
+      }
+      renderCapabilityAPIResult(data);
+    } catch (error) {
+      box.innerHTML = `<div class="cap-log error">请求失败: ${escapeHtml(error.message)}</div>`;
+    }
+  }
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
+  function statusLabel(s) {
+    return { pending: '等待中', processing: '处理中', completed: '已完成', failed: '已失败' }[s] || s;
+  }
+
+  function setText(id, val) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = val;
+  }
+
+  function showToast(msg, duration = 2500) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), duration);
+  }
+</script>
+</body>
+</html>

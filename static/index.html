@@ -635,6 +635,110 @@
             }
         }
 
+        function formatTaskProgress(status, progress) {
+            const hasProgress = typeof progress === 'number' && !Number.isNaN(progress);
+            const progressText = hasProgress ? `，进度: ${progress.toFixed(1)}%` : '';
+            return `状态: ${status}${progressText}`;
+        }
+
+        async function submitASRTask(path, formData) {
+            const response = await fetch(`${serverUrl}${path}`, {
+                method: 'POST',
+                body: formData
+            });
+
+            const data = await response.json();
+            if (!response.ok) {
+                throw new Error(data.error || '任务提交失败');
+            }
+
+            if (!data.task_id) {
+                throw new Error('任务提交成功但未返回 task_id');
+            }
+
+            return data.task_id;
+        }
+
+        async function waitForASRTask(taskId, onProgress, maxRetries = 300, intervalMs = 1000) {
+            for (let i = 0; i < maxRetries; i++) {
+                const response = await fetch(`${serverUrl}/api/v1/offline/asr/task/${taskId}`);
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.error || '任务查询失败');
+                }
+
+                if (data.status === 'completed') {
+                    return data;
+                }
+
+                if (data.status === 'failed') {
+                    throw new Error(data.error || '识别任务失败');
+                }
+
+                if (typeof onProgress === 'function') {
+                    onProgress(data.status || 'pending', data.progress);
+                }
+
+                await new Promise(resolve => setTimeout(resolve, intervalMs));
+            }
+
+            throw new Error('任务处理超时，请稍后重试');
+        }
+
+        function renderOfflineResult(resultBox, data) {
+            const duration = typeof data.duration === 'number'
+                ? `<div style="margin-top: 10px; color: #666;">音频时长: ${data.duration.toFixed(2)} 秒</div>`
+                : '';
+
+            resultBox.innerHTML = `
+                <div><strong>识别结果:</strong></div>
+                <div style="margin-top: 10px; padding: 10px; background: white; border-radius: 4px;">
+                    ${data.text || '(无结果)'}
+                </div>
+                ${duration}
+            `;
+        }
+
+        function renderDiarizationResult(resultBox, data) {
+            const duration = typeof data.duration === 'number'
+                ? `<span style="color: #666; font-size: 0.9em;">总时长: ${data.duration.toFixed(2)}s</span>`
+                : '';
+
+            let resultHTML = '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;"><strong>说话者分离结果</strong>';
+            resultHTML += duration;
+            resultHTML += '</div>';
+
+            if (data.segments && data.segments.length > 0) {
+                resultHTML += '<div style="margin-top: 8px; max-height: 400px; overflow-y: auto; flex-direction: column; display: flex; gap: 2px;">';
+
+                const speakerColors = ['#667eea', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
+
+                data.segments.forEach((segment) => {
+                    const speakerNum = typeof segment.speaker === 'number' ? segment.speaker : parseInt(String(segment.speaker).replace(/[^0-9]/g, '')) || 0;
+                    const color = speakerColors[speakerNum % speakerColors.length];
+                    const start = typeof segment.start === 'number' ? segment.start : 0;
+                    const end = typeof segment.end === 'number' ? segment.end : 0;
+
+                    resultHTML += `
+                        <div style="margin-bottom: 2px; padding: 6px 10px; background: white; border-radius: 4px; border-left: 3px solid ${color}; display: flex; flex-direction: column; gap: 2px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <span style="color: ${color}; font-weight: 600; font-size: 0.85em;">说话者 ${segment.speaker}</span>
+                                <span style="color: #9ca3af; font-size: 0.8em;">${start.toFixed(1)}s - ${end.toFixed(1)}s</span>
+                            </div>
+                            <div style="color: #374151; line-height: 1.4; font-size: 0.95em;">${segment.text || ''}</div>
+                        </div>
+                    `;
+                });
+
+                resultHTML += '</div>';
+            } else {
+                resultHTML += '<div style="margin-top: 10px; color: #666; text-align: center; padding: 20px;">(无分段结果)</div>';
+            }
+
+            resultBox.innerHTML = resultHTML;
+        }
+
         async function uploadAudioFile() {
             if (!selectedFile) {
                 alert('请先选择音频文件');
@@ -645,29 +749,24 @@
             formData.append('audio_file', selectedFile);
 
             const resultBox = document.getElementById('offlineResult');
-            resultBox.innerHTML = '<div class="empty">处理中，请稍候...</div>';
+            resultBox.innerHTML = '<div class="empty">提交任务中，请稍候...</div>';
 
             document.getElementById('uploadBtn').disabled = true;
 
             try {
-                const response = await fetch(`${serverUrl}/api/v1/offline/asr`, {
-                    method: 'POST',
-                    body: formData
+                const taskId = await submitASRTask('/api/v1/offline/asr', formData);
+
+                const taskResult = await waitForASRTask(taskId, (status, progress) => {
+                    resultBox.innerHTML = `
+                        <div class="empty">
+                            任务处理中，请稍候...<br>
+                            任务ID: ${taskId}<br>
+                            ${formatTaskProgress(status, progress)}
+                        </div>
+                    `;
                 });
 
-                const data = await response.json();
-
-                if (response.ok) {
-                    resultBox.innerHTML = `
-                        <div><strong>识别结果:</strong></div>
-                        <div style="margin-top: 10px; padding: 10px; background: white; border-radius: 4px;">
-                            ${data.text || '(无结果)'}
-                        </div>
-                        ${data.duration ? `<div style="margin-top: 10px; color: #666;">音频时长: ${data.duration.toFixed(2)} 秒</div>` : ''}
-                    `;
-                } else {
-                    resultBox.innerHTML = `<div class="log-error">错误: ${data.error || '识别失败'}</div>`;
-                }
+                renderOfflineResult(resultBox, taskResult);
             } catch (error) {
                 resultBox.innerHTML = `<div class="log-error">请求失败: ${error.message}</div>`;
                 console.error('Upload error:', error);
@@ -701,58 +800,27 @@
 
             const formData = new FormData();
             formData.append('audio_file', selectedDiarizationFile);
+            formData.append('enable_diarization', 'true');
 
             const resultBox = document.getElementById('diarizationResult');
-            resultBox.innerHTML = '<div class="empty">处理中，请稍候（这可能需要一些时间）...</div>';
+            resultBox.innerHTML = '<div class="empty">提交任务中，请稍候（这可能需要一些时间）...</div>';
 
             document.getElementById('diarizationBtn').disabled = true;
 
             try {
-                const response = await fetch(`${serverUrl}/api/v1/offline/asr/diarization`, {
-                    method: 'POST',
-                    body: formData
+                const taskId = await submitASRTask('/api/v1/offline/asr/diarization', formData);
+
+                const taskResult = await waitForASRTask(taskId, (status, progress) => {
+                    resultBox.innerHTML = `
+                        <div class="empty">
+                            任务处理中，请稍候（这可能需要一些时间）...<br>
+                            任务ID: ${taskId}<br>
+                            ${formatTaskProgress(status, progress)}
+                        </div>
+                    `;
                 });
 
-                const data = await response.json();
-
-                if (response.ok) {
-                    let resultHTML = '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;"><strong>说话者分离结果</strong>';
-
-                    if (data.duration) {
-                        resultHTML += `<span style="color: #666; font-size: 0.9em;">总时长: ${data.duration.toFixed(2)}s</span>`;
-                    }
-                    resultHTML += '</div>';
-
-                    if (data.segments && data.segments.length > 0) {
-                        resultHTML += '<div style="margin-top: 8px; max-height: 400px; overflow-y: auto; flex-direction: column; display: flex; gap: 2px;">';
-
-                        // 定义说话者颜色
-                        const speakerColors = ['#667eea', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
-
-                        data.segments.forEach((segment, index) => {
-                            // speaker 可能是数字或字符串，统一处理
-                            const speakerNum = typeof segment.speaker === 'number' ? segment.speaker : parseInt(String(segment.speaker).replace(/[^0-9]/g, '')) || 0;
-                            const color = speakerColors[speakerNum % speakerColors.length];
-
-                            resultHTML += `
-                                <div style="margin-bottom: 2px; padding: 6px 10px; background: white; border-radius: 4px; border-left: 3px solid ${color}; display: flex; flex-direction: column; gap: 2px;">
-                                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                                        <span style="color: ${color}; font-weight: 600; font-size: 0.85em;">说话者 ${segment.speaker}</span>
-                                        <span style="color: #9ca3af; font-size: 0.8em;">${segment.start.toFixed(1)}s - ${segment.end.toFixed(1)}s</span>
-                                    </div>
-                                    <div style="color: #374151; line-height: 1.4; font-size: 0.95em;">${segment.text}</div>
-                                </div>
-                            `;
-                        });
-                        resultHTML += '</div>';
-                    } else {
-                        resultHTML += '<div style="margin-top: 10px; color: #666; text-align: center; padding: 20px;">(无分段结果)</div>';
-                    }
-
-                    resultBox.innerHTML = resultHTML;
-                } else {
-                    resultBox.innerHTML = `<div class="log-error">错误: ${data.error || '分析失败'}</div>`;
-                }
+                renderDiarizationResult(resultBox, taskResult);
             } catch (error) {
                 resultBox.innerHTML = `<div class="log-error">请求失败: ${error.message}</div>`;
                 console.error('Diarization error:', error);

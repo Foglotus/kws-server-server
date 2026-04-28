@@ -212,12 +212,18 @@ func (m *DiarizationManager) mergeSpeakersIfNeeded(segments []DiarizationSegment
 	return segments
 }
 
-// ProcessWithASR 处理音频并结合 ASR 识别每个片段
-func (m *DiarizationManager) ProcessWithASR(samples []float32, sampleRate int, asrManager *OfflineASRManager) ([]DiarizationSegment, error) {
+// ProcessWithASR 处理音频并结合 ASR 识别每个片段，可选传入进度回调 func(total, completed int)
+func (m *DiarizationManager) ProcessWithASR(samples []float32, sampleRate int, asrManager *OfflineASRManager, progressCb ...func(total, completed int)) ([]DiarizationSegment, error) {
 	// 先进行说话者分离
 	segments, err := m.Process(samples, sampleRate)
 	if err != nil {
 		return nil, err
+	}
+
+	total := len(segments)
+	var cb func(total, completed int)
+	if len(progressCb) > 0 {
+		cb = progressCb[0]
 	}
 
 	// 对每个片段进行语音识别
@@ -246,6 +252,9 @@ func (m *DiarizationManager) ProcessWithASR(samples []float32, sampleRate int, a
 			seg.Text = ""
 		} else {
 			seg.Text = text
+		}
+		if cb != nil {
+			cb(total, i+1)
 		}
 	}
 

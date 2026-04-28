@@ -49,7 +49,7 @@ func NewServer(cfg *config.Config) *Server {
 	router.Use(cors.New(cors.Config{
 		AllowOrigins:     []string{"*"},
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization", "X-Requested-With"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization", "X-Requested-With", "X-Timestamp", "X-Signature", "x-timestamp", "x-signature"},
 		ExposeHeaders:    []string{"Content-Length"},
 		AllowCredentials: true,
 		MaxAge:           12 * time.Hour,
@@ -89,11 +89,11 @@ func NewServer(cfg *config.Config) *Server {
 func (s *Server) setupRoutes() {
 	// 创建 /realkws 路由组
 	realkws := s.router.Group("/realkws")
+	realkws.Use(handler.SignatureAuthMiddleware(s.config))
 	{
-		// 静态文件服务（测试页面）
-		realkws.Static("/static", "./static")
+		// 兼容旧测试页面入口，统一跳转到后台管理页
 		realkws.GET("/test", func(c *gin.Context) {
-			c.File("./static/index.html")
+			c.Redirect(http.StatusTemporaryRedirect, "/realkws/admin")
 		})
 
 		// 健康检查
@@ -112,11 +112,6 @@ func (s *Server) setupRoutes() {
 
 			// 离线语音识别
 			if s.config.OfflineASR.Enabled {
-				// 同步模式（兼容旧调用）
-				api.POST("/offline/asr/sync", func(c *gin.Context) {
-					handler.HandleOfflineASRWithQueue(c, s.offlineASR, nil, s.taskQueue)
-				})
-
 				// 异步模式：立即返回 taskId
 				api.POST("/offline/asr", func(c *gin.Context) {
 					handler.HandleOfflineASRAsync(c, s.offlineASR, nil, s.taskQueue)
@@ -146,6 +141,58 @@ func (s *Server) setupRoutes() {
 			api.GET("/stats", func(c *gin.Context) {
 				handler.HandleStats(c, s.streamingASR, s.offlineASR)
 			})
+		}
+
+		// 后台管理路由（需密码认证）
+		adminAuth := handler.AdminAuthMiddleware(s.config)
+		admin := realkws.Group("/admin")
+		{
+			// 管理页面
+			admin.GET("", func(c *gin.Context) {
+				c.File("./static/admin.html")
+			})
+			// 登录接口（无需 token）
+			admin.POST("/login", handler.HandleAdminLogin(s.config))
+
+			// 以下接口需要认证
+			adminAPI := admin.Group("/api", adminAuth)
+			{
+				adminAPI.GET("/stats", handler.HandleAdminStats(s.streamingASR, s.offlineASR, s.taskQueue))
+				adminAPI.GET("/tasks", handler.HandleAdminListTasks(s.taskQueue))
+				adminAPI.POST("/tasks/:taskId/cancel", handler.HandleAdminCancelTask(s.taskQueue))
+				adminAPI.GET("/sessions", handler.HandleAdminListSessions(s.streamingASR))
+				adminAPI.POST("/sessions/:sessionId/close", handler.HandleAdminCloseSession(s.streamingASR))
+				adminAPI.GET("/workers", handler.HandleAdminWorkers(s.taskQueue))
+
+				// 测试能力接口（全部受 admin 鉴权保护）
+				adminAPI.GET("/health", handler.HealthCheck)
+				adminAPI.GET("/info", handler.Index)
+				adminAPI.GET("/capability/stats", func(c *gin.Context) {
+					handler.HandleStats(c, s.streamingASR, s.offlineASR)
+				})
+
+				if s.config.StreamingASR.Enabled {
+					adminAPI.GET("/capability/streaming/asr", func(c *gin.Context) {
+						handler.HandleStreamingASR(c, s.streamingASR)
+					})
+				}
+
+				if s.config.OfflineASR.Enabled {
+					adminAPI.POST("/capability/offline/asr", func(c *gin.Context) {
+						handler.HandleOfflineASRAsync(c, s.offlineASR, nil, s.taskQueue)
+					})
+
+					adminAPI.GET("/capability/offline/asr/task/:taskId", func(c *gin.Context) {
+						handler.HandleASRTaskQuery(c, s.taskQueue)
+					})
+
+					if s.config.SpeakerDiarization.Enabled {
+						adminAPI.POST("/capability/offline/asr/diarization", func(c *gin.Context) {
+							handler.HandleOfflineASRAsync(c, s.offlineASR, s.diarizationMgr, s.taskQueue)
+						})
+					}
+				}
+			}
 		}
 	}
 }

@@ -10,7 +10,14 @@
 
 ## 认证
 
-当前版本不需要认证。生产环境建议添加认证机制。
+非管理员接口必须进行签名校验。
+
+- `X-Timestamp`: Unix 时间戳（秒）
+- `X-Signature`: `hex(SHA256(path + timestamp))`
+
+管理员接口（`/realkws/admin/*`）不使用该签名机制，继续使用管理员鉴权。
+
+完整前端对接说明见：`docs/SIGNATURE_INTEGRATION.md`
 
 ---
 

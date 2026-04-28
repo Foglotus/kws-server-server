@@ -1,4 +1,4 @@
-.PHONY: help setup download-models build build-native build-binary build-base up down restart logs clean test test-websocket run version release quick-update
+.PHONY: help setup download-models build build-native build-binary build-base up down restart logs clean test test-websocket run version release-runtime quick-update
 
 # 版本信息
 VERSION := $(shell cat VERSION 2>/dev/null || echo "dev")
@@ -19,9 +19,7 @@ help:
 	@echo "=========================================="
 	@echo ""
 	@echo "📦 发布打包:"
-	@echo "  make release         - 🎯 完整部署包（首次部署）"
-	@echo "                         标准模式：镜像包含程序，约2GB"
-	@echo "  make release-runtime - ⚡ 运行时部署包（推荐）"
+	@echo "  make release-runtime - ⚡ 运行时部署包"
 	@echo "                         分离模式：基础镜像+程序，支持快速更新"
 	@echo "  make build-binary    - 🚀 编译程序（快速更新）"
 	@echo "                         仅编译二进制，仅几MB"
@@ -52,11 +50,7 @@ help:
 	@echo ""
 	@echo "📖 发布流程:"
 	@echo ""
-	@echo "  【标准部署】（约2GB，程序在镜像内）"
-	@echo "  1. make download-models  # 下载模型"
-	@echo "  2. make release          # 生成标准部署包"
-	@echo ""
-	@echo "  【运行时部署】（约2GB首次，后续15MB，推荐✨）"
+	@echo "  【运行时部署】（约2GB首次，后续15MB）"
 	@echo "  1. make download-models  # 下载模型"
 	@echo "  2. make release-runtime  # 生成运行时部署包"
 	@echo "     首次: 传输完整包（基础镜像+程序+模型）"
@@ -293,137 +287,6 @@ version:
 	else \
 		echo "提示: 运行 'make build-native' 编译二进制文件"; \
 	fi
-
-# 打包发布版本 - 一键生成完整的离线部署包
-release:
-	@echo "=========================================="
-	@echo "  AI Recorder 离线部署包生成"
-	@echo "  版本: $(VERSION)"
-	@echo "=========================================="
-	@echo ""
-	
-	@echo "步骤 1/4: 检查模型文件..."
-	@if [ ! -f "./models/vad/silero_vad.onnx" ]; then \
-		echo "❌ 模型文件缺失，请先运行: make download-models"; \
-		exit 1; \
-	fi
-	@echo "✓ 模型文件检查通过"
-	@echo ""
-	
-	@echo "步骤 1.5/4: 准备部署脚本..."
-	@mkdir -p offline_deploy
-	@if [ -d scripts ]; then \
-		echo "从 scripts 复制部署文件..."; \
-		cp scripts/*.sh offline_deploy/ 2>/dev/null || true; \
-		cp scripts/README.md offline_deploy/ 2>/dev/null || true; \
-		chmod +x offline_deploy/*.sh 2>/dev/null || true; \
-		echo "✓ 已复制: deploy.sh, verify.sh, test_env.sh, README.md"; \
-	else \
-		echo "⚠ scripts 目录不存在"; \
-		echo "  请确保部署脚本在 scripts 目录中"; \
-		exit 1; \
-	fi
-	@echo "✓ 脚本文件已准备"
-	@echo ""
-	
-	@echo "步骤 2/4: 构建 Docker 镜像..."
-	@if [ -z "$(DOCKER)" ]; then \
-		echo "❌ Docker 未安装或未找到"; \
-		echo "请先安装 Docker 或使用已有的 Docker 镜像"; \
-		exit 1; \
-	fi
-	@echo "开始构建镜像（这可能需要几分钟）..."
-	@PATH=$(DOCKER_PATH):$$PATH $(DOCKER) build \
-		--build-arg VERSION="$(VERSION)" \
-		--build-arg GIT_COMMIT="$(GIT_COMMIT)" \
-		--build-arg BUILD_TIME="$(BUILD_TIME)" \
-		-t airecorder:latest \
-		-t airecorder:$(VERSION) \
-		-f Dockerfile .
-	@echo "✓ Docker 镜像构建完成"
-	@echo ""
-	
-	@echo "步骤 3/4: 打包模型文件..."
-	@echo "  正在压缩 models/ 目录（这可能需要几分钟）..."
-	@if [ -d models ] && [ -n "$$(ls -A models 2>/dev/null)" ]; then \
-		tar -czf offline_deploy/models.tar.gz models/ && \
-		MODEL_SIZE=$$(du -h offline_deploy/models.tar.gz | cut -f1) && \
-		echo "✓ 模型打包完成: $$MODEL_SIZE"; \
-	else \
-		echo "⚠️  models/ 目录为空或不存在，跳过模型打包"; \
-		echo "  如需包含模型，请先运行: make download-models"; \
-	fi
-	@echo ""
-	
-	@echo "步骤 4/4: 导出 Docker 镜像..."
-	@echo "  正在导出镜像 airecorder:latest（这可能需要几分钟）..."
-	@PATH=$(DOCKER_PATH):$$PATH $(DOCKER) save airecorder:latest | gzip > offline_deploy/airecorder.tar.gz
-	@IMAGE_SIZE=$$(du -h offline_deploy/airecorder.tar.gz | cut -f1); \
-	echo "✓ 镜像导出完成: $$IMAGE_SIZE"
-	@echo ""
-	
-	@echo "生成部署清单..."
-	@echo "$(VERSION)" > offline_deploy/VERSION
-	@cp config.yaml offline_deploy/config.yaml
-	@MODEL_SIZE=$$(du -h offline_deploy/models.tar.gz | cut -f1); \
-	IMAGE_SIZE=$$(du -h offline_deploy/airecorder.tar.gz | cut -f1); \
-	echo "AI Recorder 离线部署包" > offline_deploy/MANIFEST.txt; \
-	echo "========================================" >> offline_deploy/MANIFEST.txt; \
-	echo "版本号: $(VERSION)" >> offline_deploy/MANIFEST.txt; \
-	echo "Git提交: $(GIT_COMMIT)" >> offline_deploy/MANIFEST.txt; \
-	echo "构建时间: $(BUILD_TIME)" >> offline_deploy/MANIFEST.txt; \
-	echo "生成主机: $$(hostname)" >> offline_deploy/MANIFEST.txt; \
-	echo "" >> offline_deploy/MANIFEST.txt; \
-	echo "文件列表:" >> offline_deploy/MANIFEST.txt; \
-	echo "----------------------------------------" >> offline_deploy/MANIFEST.txt; \
-	echo "1. airecorder.tar.gz     - Docker 镜像 ($$IMAGE_SIZE)" >> offline_deploy/MANIFEST.txt; \
-	echo "2. models.tar.gz         - AI 模型 ($$MODEL_SIZE)" >> offline_deploy/MANIFEST.txt; \
-	echo "3. config.yaml           - 配置文件" >> offline_deploy/MANIFEST.txt; \
-	echo "4. VERSION               - 版本号" >> offline_deploy/MANIFEST.txt; \
-	echo "5. deploy.sh             - 一键部署脚本 ⭐" >> offline_deploy/MANIFEST.txt; \
-	echo "6. verify.sh             - 验证脚本" >> offline_deploy/MANIFEST.txt; \
-	echo "7. test_env.sh           - 环境测试脚本" >> offline_deploy/MANIFEST.txt; \
-	echo "8. README.md             - 使用说明文档" >> offline_deploy/MANIFEST.txt; \
-	echo "9. MANIFEST.txt          - 本文件" >> offline_deploy/MANIFEST.txt; \
-	echo "" >> offline_deploy/MANIFEST.txt; \
-	echo "部署方法:" >> offline_deploy/MANIFEST.txt; \
-	echo "----------------------------------------" >> offline_deploy/MANIFEST.txt; \
-	echo "1. 将 offline_deploy 目录复制到目标机器" >> offline_deploy/MANIFEST.txt; \
-	echo "2. cd offline_deploy && chmod +x deploy.sh" >> offline_deploy/MANIFEST.txt; \
-	echo "3. ./deploy.sh" >> offline_deploy/MANIFEST.txt; \
-	echo "4. 访问 http://localhost:11123" >> offline_deploy/MANIFEST.txt; \
-	echo "" >> offline_deploy/MANIFEST.txt; \
-	echo "验证: ./verify.sh" >> offline_deploy/MANIFEST.txt; \
-	echo "========================================" >> offline_deploy/MANIFEST.txt
-	@echo "✓ 部署清单已生成"
-	@echo ""
-	
-	@echo "计算校验和..."
-	@cd offline_deploy && md5sum airecorder.tar.gz models.tar.gz > checksums.md5 2>/dev/null || \
-		(md5 airecorder.tar.gz models.tar.gz > checksums.md5 2>/dev/null || true)
-	@echo "✓ 校验和已生成"
-	@echo ""
-	
-	@echo "=========================================="
-	@echo "✓ 离线部署包生成完成！"
-	@echo "=========================================="
-	@echo ""
-	@echo "📦 部署包位置: offline_deploy/"
-	@echo ""
-	@echo "📂 包含文件:"
-	@ls -lh offline_deploy/ | tail -n +2 | awk '{print $$9, "-", $$5}'
-	@echo ""
-	@TOTAL_SIZE=$$(du -sh offline_deploy/ | cut -f1); \
-	echo "📊 总大小: $$TOTAL_SIZE"
-	@echo ""
-	@echo "🚀 打包发布:"
-	@echo "   tar -czf airecorder-$(VERSION)-offline.tar.gz offline_deploy/"
-	@echo ""
-	@echo "📤 发送给用户后，用户执行:"
-	@echo "   tar -xzf airecorder-$(VERSION)-offline.tar.gz"
-	@echo "   cd offline_deploy && ./deploy.sh"
-	@echo ""
-	@echo "=========================================="
 
 # 打包运行时部署包（基础镜像 + 编译程序 + 模型）
 release-runtime:

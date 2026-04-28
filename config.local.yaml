@@ -1,9 +1,19 @@
 server:
-  host: "127.0.0.1"  # 本地开发使用 localhost
+  host: "0.0.0.0"
   port: 11123
   max_connections: 100  # 本地开发降低限制
   read_timeout: 1200  # 20分钟，支持大文件上传
   write_timeout: 1200 # 20分钟，支持长时间处理
+
+# 后台管理配置
+admin:
+  password: "admin123"
+
+# 非管理员接口签名校验
+signature:
+  enabled: true
+  secret: "please-change-this-signature-secret"
+  max_skew_seconds: 300
 
 # 实时语音识别配置（Streaming ASR）
 streaming_asr:
@@ -30,14 +40,14 @@ offline_asr:
   encoder: "model.int8.onnx"
   decoder: ""
   tokens: "tokens.txt"
-  num_threads: 2  # 本地开发使用较少线程
+  num_threads: 4  # 本地开发使用较少线程
   sample_rate: 16000
   decoding_method: "greedy_search"
-  max_active_paths: 4
+  max_active_paths: 6
   # 文件处理配置
   max_file_size_mb: 1000   # 最大允许上传的文件大小（MB），支持超大文件
   chunk_duration_sec: 60   # 分块处理时长（秒），建议30-60秒以提高处理效率
-  max_concurrency: 4       # 最大并发处理块数，增加到4以加快处理速度
+  max_concurrency: 4       # 最大并发处理块数，增加到12以加快处理速度
 
 # 说话者分离配置（Speaker Diarization）
 speaker_diarization:
@@ -80,7 +90,7 @@ vad:
 concurrency:
   max_streaming_sessions: 10
   max_offline_jobs: 5
-  worker_pool_size: 4
+  worker_pool_size: 6
   queue_size: 100
 
 # 日志配置

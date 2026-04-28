@@ -127,8 +127,8 @@ func (m *OfflineASRManager) RecognizeSegment(samples []float32, sampleRate int) 
 	return m.Recognize(samples, sampleRate)
 }
 
-// RecognizeChunked 分块识别长音频
-func (m *OfflineASRManager) RecognizeChunked(samples []float32, sampleRate int) (string, error) {
+// RecognizeChunked 分块识别长音频，可选传入进度回调 func(total, completed int)
+func (m *OfflineASRManager) RecognizeChunked(samples []float32, sampleRate int, progressCb ...func(total, completed int)) (string, error) {
 	// 获取分块时长配置（默认60秒，提高处理效率）
 	chunkDurationSec := m.config.OfflineASR.ChunkDurationSec
 	if chunkDurationSec <= 0 {
@@ -241,7 +241,16 @@ func (m *OfflineASRManager) RecognizeChunked(samples []float32, sampleRate int) 
 
 	// 收集结果
 	failedChunks := 0
+	completedChunks := 0
+	var cb func(total, completed int)
+	if len(progressCb) > 0 {
+		cb = progressCb[0]
+	}
 	for result := range resultChan {
+		completedChunks++
+		if cb != nil {
+			cb(numChunks, completedChunks)
+		}
 		if result.err != nil {
 			log.Printf("[ChunkedASR] Warning: chunk %d failed: %v", result.index+1, result.err)
 			failedChunks++

@@ -26,7 +26,7 @@ docker run --rm \
   --platform linux/arm64 \
   -v "$PWD":/build \
   -w /build \
-  golang:1.21-bookworm \
+  golang:1.23-bookworm \
   bash -c "
     echo '安装构建依赖...'
     apt-get update && apt-get install -y gcc g++ > /dev/null 2>&1

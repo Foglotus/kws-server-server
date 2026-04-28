@@ -516,6 +516,7 @@ type OfflineASRAsyncResponse struct {
 type OfflineASRTaskResponse struct {
 	TaskID   string               `json:"task_id"`
 	Status   string               `json:"status"`
+	Progress float32              `json:"progress"` // 处理进度百分比 0-100
 	Text     string               `json:"text,omitempty"`
 	Segments []DiarizationSegment `json:"segments,omitempty"`
 	Duration float32              `json:"duration,omitempty"`
@@ -637,6 +638,10 @@ func HandleASRTaskQuery(c *gin.Context, taskQueue *asr.TaskQueue) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "task_id is required"})
 		return
 	}
+	if !asr.IsValidTaskID(taskID) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid task_id format"})
+		return
+	}
 
 	task, ok := taskQueue.GetTask(taskID)
 	if !ok {
@@ -645,8 +650,9 @@ func HandleASRTaskQuery(c *gin.Context, taskQueue *asr.TaskQueue) {
 	}
 
 	resp := OfflineASRTaskResponse{
-		TaskID: task.ID,
-		Status: taskStatusString(task.GetStatus()),
+		TaskID:   task.ID,
+		Status:   taskStatusString(task.GetStatus()),
+		Progress: task.GetProgress(),
 	}
 
 	if task.GetStatus() == asr.TaskStatusCompleted && task.Result != nil {

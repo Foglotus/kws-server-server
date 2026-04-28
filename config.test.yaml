@@ -5,6 +5,12 @@ server:
   read_timeout: 1200  # 20分钟，支持大文件上传
   write_timeout: 1200 # 20分钟，支持长时间处理
 
+# 非管理员接口签名校验
+signature:
+  enabled: true
+  secret: "please-change-this-signature-secret"
+  max_skew_seconds: 300
+
 # 实时语音识别配置（Streaming ASR）
 streaming_asr:
   enabled: true

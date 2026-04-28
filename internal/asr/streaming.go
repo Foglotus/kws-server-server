@@ -186,6 +186,37 @@ func (m *StreamingASRManager) GetStats() map[string]interface{} {
 	}
 }
 
+// ListSessions 返回当前活跃会话列表
+func (m *StreamingASRManager) ListSessions() []map[string]interface{} {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	result := make([]map[string]interface{}, 0, len(m.sessions))
+	for id := range m.sessions {
+		result = append(result, map[string]interface{}{
+			"id":     id,
+			"status": "active",
+		})
+	}
+	return result
+}
+
+// CloseSessionByAdmin 由管理员强制关闭指定会话
+func (m *StreamingASRManager) CloseSessionByAdmin(sessionID string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	session, exists := m.sessions[sessionID]
+	if !exists {
+		return false
+	}
+	sherpa.DeleteOnlineStream(session.Stream)
+	delete(m.sessions, sessionID)
+	atomic.AddInt64(&m.stats.activeSessions, -1)
+	log.Printf("Admin closed streaming session: %s (active: %d)", sessionID, atomic.LoadInt64(&m.stats.activeSessions))
+	return true
+}
+
 // Close 关闭管理器
 func (m *StreamingASRManager) Close() {
 	m.mu.Lock()
